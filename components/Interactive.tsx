@@ -1,5 +1,7 @@
 "use client";
 /**
+ * Scroll reveal: panels and news below the fold rise softly into place as they scroll into view.
+ *
  * Pointer-driven polish, kept subtle: a soft light that follows the cursor, a spotlight and glowing edge
  * on the glass panel under it, gentle parallax on the background, and a ripple on clicks. Everything is
  * driven by CSS variables, so the work per frame is tiny. Hover effects are skipped on touch screens,
@@ -15,6 +17,51 @@ export default function Interactive() {
 
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const REVEAL = ".block, .news-item, .resources li, .ledger.two";
+    const seen = new WeakSet<Element>();
+    const io = new IntersectionObserver(
+      (entries) => {
+        let n = 0;
+        for (const e of entries) {
+          if (!e.isIntersecting) continue;
+          const el = e.target as HTMLElement;
+          io.unobserve(el);
+          el.style.transitionDelay = `${Math.min(n++, 5) * 70}ms`; // neighbours arrive one after another
+          el.classList.add("in");
+          const done = () => {
+            el.classList.remove("rv", "in");
+            el.style.transitionDelay = "";
+          };
+          el.addEventListener("transitionend", done, { once: true });
+          setTimeout(done, 1600); // in case no transition fires
+        }
+      },
+      { rootMargin: "0px 0px -6% 0px" },
+    );
+    const scan = () => {
+      document.querySelectorAll<HTMLElement>(REVEAL).forEach((el) => {
+        if (seen.has(el) || el.closest(".chat-col")) return;
+        seen.add(el);
+        // Already on screen at first paint: leave it be. Anything that appears later or below the fold rises in.
+        if (!revealReady && el.getBoundingClientRect().top < innerHeight) return;
+        el.classList.add("rv");
+        io.observe(el);
+      });
+    };
+    let revealReady = false;
+    scan();
+    revealReady = true;
+    let pending = 0;
+    const mo = new MutationObserver(() => {
+      if (!pending) pending = requestAnimationFrame(() => { pending = 0; scan(); });
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+    const stopReveal = () => {
+      io.disconnect();
+      mo.disconnect();
+      cancelAnimationFrame(pending);
+    };
+
     const root = document.documentElement;
     const fine = window.matchMedia("(pointer: fine)").matches;
     let x = innerWidth / 2, y = innerHeight / 3, gx = x, gy = y, frame = 0;
@@ -68,6 +115,7 @@ export default function Interactive() {
     addEventListener("pointerdown", down, { passive: true });
     document.addEventListener("pointerleave", leave);
     return () => {
+      stopReveal();
       removeEventListener("pointermove", move);
       removeEventListener("pointerdown", down);
       document.removeEventListener("pointerleave", leave);

@@ -4,6 +4,8 @@ import { useMemo, useState, type ReactNode } from "react";
 
 import { NA, toCsv } from "@/lib/format";
 
+import { CountText } from "./motion";
+
 export function Kicker({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
   return (
     <h3 className="kicker">
@@ -27,7 +29,7 @@ export function Ledger({ rows, twoColumn = false }: { rows: { label: string; val
           <span className="l">{r.label}</span>
           <span className="dots" />
           <span className={`v ${r.value === NA ? "na" : ""} ${r.className ?? ""}`} title={r.value === NA ? "Not available for this company" : undefined}>
-            {r.value}
+            <CountText text={r.value} />
             {r.derived && r.value !== NA ? <CalcMark /> : null}
           </span>
         </li>
@@ -80,11 +82,18 @@ export function Notice({ kind = "info", children, onRetry }: { kind?: "info" | "
   );
 }
 
+/** Placeholder while data loads: a heading, a chart-sized block and a few lines, with a light sweeping across. */
 export function Loading({ lines = 4 }: { lines?: number }) {
   return (
-    <div aria-busy="true" aria-label="Loading">
+    <div className="loading-card" aria-busy="true" aria-label="Loading">
+      {lines >= 4 ? (
+        <>
+          <div className="shimmer sk-title" />
+          <div className="shimmer sk-chart" />
+        </>
+      ) : null}
       {Array.from({ length: lines }, (_, i) => (
-        <div key={i} className="shimmer" style={{ width: `${90 - i * 9}%` }} />
+        <div key={i} className="shimmer sk-line" style={{ width: `${92 - i * 11}%` }} />
       ))}
     </div>
   );

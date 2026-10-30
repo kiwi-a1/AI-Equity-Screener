@@ -14,6 +14,7 @@ import MarketNews from "./MarketNews";
 import MarketOverview from "./MarketOverview";
 import CompanyHeader from "./CompanyHeader";
 import SearchBox from "./SearchBox";
+import TickerTape from "./TickerTape";
 import Financials from "./sections/Financials";
 import HistoricalData from "./sections/HistoricalData";
 import Holders from "./sections/Holders";
@@ -74,12 +75,24 @@ export default function Workspace() {
   );
   const ask = useCallback((q: string) => chatRef.current?.ask(q), []);
 
-  // On narrow screens the tab row scrolls; keep the open section's tab in view.
+  // The highlight under the open tab glides to the tab you pick. On narrow screens the tab row scrolls,
+  // so the open tab is also kept in view.
+  const tabsRef = useRef<HTMLElement>(null);
+  const [ink, setInk] = useState<{ left: number; width: number; opacity: number }>({ left: 0, width: 0, opacity: 0 });
   useEffect(() => {
-    const tab = document.querySelector<HTMLElement>(".tabs button.on");
-    const row = tab?.parentElement;
-    if (tab && row && row.scrollWidth > row.clientWidth) row.scrollTo({ left: tab.offsetLeft - (row.clientWidth - tab.offsetWidth) / 2, behavior: "smooth" });
-  }, [section, symbol]);
+    const row = tabsRef.current;
+    if (!row) return;
+    const place = () => {
+      const tab = row.querySelector<HTMLElement>("button.on");
+      if (tab) setInk({ left: tab.offsetLeft, width: tab.offsetWidth, opacity: 1 });
+    };
+    place();
+    const tab = row.querySelector<HTMLElement>("button.on");
+    if (tab && row.scrollWidth > row.clientWidth) row.scrollTo({ left: tab.offsetLeft - (row.clientWidth - tab.offsetWidth) / 2, behavior: "smooth" });
+    const ro = new ResizeObserver(place);
+    ro.observe(row);
+    return () => ro.disconnect();
+  }, [section, symbol, !!company.data]);
 
   const info = company.data;
   const Section = SECTION_COMPONENTS[section];
@@ -87,6 +100,7 @@ export default function Workspace() {
   return (
     <div className="shell">
       <main className={`main${symbol ? "" : " home"}`}>
+        <TickerTape />
         <div className="masthead">
           <div className="masthead-top">
             <h1 className="title">
@@ -127,7 +141,8 @@ export default function Workspace() {
                 </Notice>
               </div>
             )}
-            <nav className="tabs" aria-label="Sections">
+            <nav className="tabs" aria-label="Sections" ref={tabsRef}>
+              <span className="tab-ink" aria-hidden style={ink} />
               {SECTIONS.map((s) => (
                 <button key={s.id} type="button" className={s.id === section ? "on" : ""} aria-current={s.id === section ? "page" : undefined} onClick={() => navigate({ tab: s.id })}>
                   {s.label}
