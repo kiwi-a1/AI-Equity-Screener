@@ -4,6 +4,7 @@ import { fmtNumber, fmtPct } from "@/lib/format";
 import type { History, Quote } from "@/lib/types";
 
 import { Sparkline } from "./charts";
+import { CountText } from "./motion";
 import { changeClass, DataState, Kicker } from "./ui";
 import { useApi } from "./useApi";
 
@@ -36,9 +37,9 @@ export default function MarketOverview() {
                 <li key={i.symbol}>
                   <span className="l">{i.name}</span>
                   <span className="dots" />
-                  <span className="v num">{fmtNumber(q?.price ?? null)}</span>
+                  <span className="v num"><CountText text={fmtNumber(q?.price ?? null)} /></span>
                   <span className={`v num ${changeClass(q?.changePercent)}`} style={{ minWidth: 76, textAlign: "right" }}>
-                    {fmtPct(q?.changePercent ?? null, { ratio: false, signed: true })}
+                    <CountText text={fmtPct(q?.changePercent ?? null, { ratio: false, signed: true })} />
                   </span>
                 </li>
               );

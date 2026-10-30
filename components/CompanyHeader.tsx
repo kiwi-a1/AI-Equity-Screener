@@ -3,6 +3,7 @@
 import { fmtChange, fmtNumber, fmtPct } from "@/lib/format";
 import type { CompanyInfo } from "@/lib/types";
 
+import { CountText } from "./motion";
 import { changeClass } from "./ui";
 
 const STATES: Record<string, string> = {
@@ -26,8 +27,8 @@ export default function CompanyHeader({ info }: { info: CompanyInfo }) {
         </div>
       </div>
       <div className="co-price">
-        <span key={info.price ?? "na"} className={`p num flash ${changeClass(info.change)}-flash`}>{fmtNumber(info.price)}</span>
-        <span className={`c num ${changeClass(info.change)}`}>{fmtChange(info.change, info.changePercent)}</span>
+        <span key={info.price ?? "na"} className={`p num flash ${changeClass(info.change)}-flash`}><CountText id={`price-${info.symbol}`} text={fmtNumber(info.price)} /></span>
+        <span className={`c num ${changeClass(info.change)}`}><CountText id={`chg-${info.symbol}`} text={fmtChange(info.change, info.changePercent)} /></span>
         {ext.map((e) => (
           <div className="co-ext num" key={e.label}>
             {e.label} <strong>{fmtNumber(e.price)}</strong> <span className={changeClass(e.pct)}>{fmtPct(e.pct, { ratio: false, signed: true })}</span>
