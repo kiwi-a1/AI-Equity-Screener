@@ -13,6 +13,8 @@ import { groq, openrouter, runOpenAI } from "./openai";
 /** Services that share a transcript format, so the conversation carries over between them. */
 const FAMILY: Record<AiProvider, string> = { anthropic: "anthropic", gemini: "gemini", groq: "openai", openrouter: "openai" };
 
+const LABELS: Record<AiProvider, string> = { anthropic: "Claude", gemini: "Gemini", groq: "Groq", openrouter: "OpenRouter" };
+
 type Runner = (history: unknown[], message: string, note: string) => AsyncGenerator<ChatEvent>;
 const RUNNERS: Record<AiProvider, Runner> = {
   anthropic: (h, m, n) => runClaude(h as Record<string, unknown>[], m, n),
@@ -24,15 +26,15 @@ const RUNNERS: Record<AiProvider, Runner> = {
 export async function* runAnalyst(req: ChatRequest, runners: Record<AiProvider, Runner> = RUNNERS): AsyncGenerator<ChatEvent> {
   const providers = aiProviders();
   if (!providers.length) {
-    yield { type: "error", text: "No AI key is configured. Add GROQ_API_KEY, GEMINI_API_KEY or OPENROUTER_API_KEY to the environment." };
+    yield { type: "error", text: "The AI assistant is not set up yet. Please check back soon." };
     yield { type: "done", sources: { web: [], queries: [], data: [] }, history: [], provider: "none" };
     return;
   }
   const note = buildContextNote(req.context);
   const prevFamily = req.provider ? FAMILY[req.provider as AiProvider] : null;
 
-  for (const [i, provider] of providers.entries()) {
-    const isLast = i === providers.length - 1;
+  const reasons: string[] = [];
+  for (const provider of providers) {
     // Histories are format-specific; start fresh when switching to a different family.
     const history = prevFamily === FAMILY[provider] && Array.isArray(req.history) ? [...req.history] : [];
     const held: ChatEvent[] = [];
@@ -40,8 +42,9 @@ export async function* runAnalyst(req: ChatRequest, runners: Record<AiProvider, 
     let failed = false;
     for await (const ev of runners[provider](history, req.message, note)) {
       if (ev.type === "text") wrote = true;
-      if (!wrote && !isLast && ev.type === "error") {
+      if (!wrote && ev.type === "error") {
         failed = true; // swallow and try the next service
+        reasons.push(`${LABELS[provider]}: ${ev.text}`);
         continue;
       }
       if (failed) continue; // drop the failed run's done event
@@ -53,6 +56,12 @@ export async function* runAnalyst(req: ChatRequest, runners: Record<AiProvider, 
       yield ev;
     }
     if (!failed) return;
-    yield { type: "status", text: "Switching to a backup AI service" };
+    if (provider !== providers.at(-1)) yield { type: "status", text: "Still working on it" };
   }
+  // Every service failed. Visitors get one neutral message; the per-service reasons go to the server
+  // log (Vercel: project, Logs) so the right key or setting can be fixed.
+  console.error(`[ai] no service could answer. ${reasons.join(" | ")}`);
+  const busy = reasons.every((r) => /busy|limit|try again/i.test(r));
+  yield { type: "error", text: busy ? "The AI assistant is very busy right now. Please try again in a moment." : "The AI assistant is unavailable right now. Please try again shortly." };
+  yield { type: "done", sources: { web: [], queries: [], data: [] }, history: [], provider: "none" };
 }
