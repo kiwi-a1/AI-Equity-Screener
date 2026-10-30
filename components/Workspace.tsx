@@ -5,7 +5,7 @@
  * The AI analyst column is always present on the right.
  */
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { SECTIONS, type CompanyInfo, type PageContext, type SectionId } from "@/lib/types";
 
@@ -73,6 +73,13 @@ export default function Workspace() {
     [section],
   );
   const ask = useCallback((q: string) => chatRef.current?.ask(q), []);
+
+  // On narrow screens the tab row scrolls; keep the open section's tab in view.
+  useEffect(() => {
+    const tab = document.querySelector<HTMLElement>(".tabs button.on");
+    const row = tab?.parentElement;
+    if (tab && row && row.scrollWidth > row.clientWidth) row.scrollTo({ left: tab.offsetLeft - (row.clientWidth - tab.offsetWidth) / 2, behavior: "smooth" });
+  }, [section, symbol]);
 
   const info = company.data;
   const Section = SECTION_COMPONENTS[section];
