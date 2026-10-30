@@ -286,3 +286,16 @@ describe("provider failover", () => {
     expect(text).not.toMatch(/groq|gemini|openrouter|claude/i);
   });
 });
+
+describe("follow-up questions", () => {
+  it("splits them from the answer, also mid-stream", async () => {
+    const { splitFollowUps, FOLLOWUP_MARKER } = await import("@/lib/ai/prompt");
+    const full = `Apple grew revenue 6%.\n\n${FOLLOWUP_MARKER}\n- How do margins compare with Microsoft?\n- What drove services growth?\n- 3. Is the valuation stretched?`;
+    expect(splitFollowUps(full)).toEqual({
+      body: "Apple grew revenue 6%.",
+      followUps: ["How do margins compare with Microsoft?", "What drove services growth?", "Is the valuation stretched?"],
+    });
+    expect(splitFollowUps("Apple grew.\n\n[[follow").body).toBe("Apple grew.");
+    expect(splitFollowUps("No marker here").followUps).toEqual([]);
+  });
+});

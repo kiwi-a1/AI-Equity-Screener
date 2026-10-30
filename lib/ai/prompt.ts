@@ -4,6 +4,9 @@
  */
 import type { SectionId } from "../types";
 
+/** Marks the start of the follow-up questions at the end of an answer; the chat shows them as buttons. */
+export const FOLLOWUP_MARKER = "[[follow-ups]]";
+
 export const SYSTEM_PROMPT = `You are the AI financial analyst inside an equity research workspace. The user is looking at one selected company with six sections: Summary, News, Statistics, Historical Data, Financials and Holders. Before each question you receive an application context note with the selected company, the active section, the user's filters and figures visible on screen. Use it to resolve references such as "this company", "these numbers" or "this chart". If the user asks about another company, answer about that company; for comparisons include the selected company unless told otherwise.
 
 How to work
@@ -20,7 +23,24 @@ How to answer
 - Always state fiscal periods, currencies and units, and whether figures are trailing twelve months, annual or quarterly.
 - Cite web claims with the source name and date.
 - Do not use em dashes or emojis in your answers.
-- Provide information and analysis, not personalized investment advice. Do not tell the user to buy or sell; you may discuss valuation, risks, catalysts and scenarios.`;
+- Provide information and analysis, not personalized investment advice. Do not tell the user to buy or sell; you may discuss valuation, risks, catalysts and scenarios.
+
+Follow-up questions
+- End every final answer with a line containing only ${FOLLOWUP_MARKER}, followed by exactly three short follow-up questions the user might ask next, one per line, each starting with "- ". Make them specific to what you just answered and to the company being discussed. Nothing may come after them.`;
+
+/** Splits an answer into the visible text and its follow-up questions (also while it is still streaming). */
+export function splitFollowUps(text: string): { body: string; followUps: string[] } {
+  const i = text.indexOf("[[follow");
+  if (i < 0) return { body: text, followUps: [] };
+  const followUps = text
+    .slice(i)
+    .split("\n")
+    .slice(1)
+    .map((l) => l.replace(/^\s*(?:(?:[-*]|\d+[.)])\s*)+/, "").trim())
+    .filter((l) => l.length > 3)
+    .slice(0, 3);
+  return { body: text.slice(0, i).trimEnd(), followUps };
+}
 
 export const SUGGESTED_PROMPTS: Record<SectionId, string[]> = {
   summary: [

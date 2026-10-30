@@ -606,3 +606,19 @@ button:active:not(:disabled), .btn:active { transform: scale(0.97); }
   .cursor-glow, .ripple { display: none; }
   .orbs { transform: none; }
 }
+
+/* chat list: saved chats per company */
+.chat-list .group { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 4px 0 8px; }
+.chat-list ul { list-style: none; padding: 0; margin: 0 0 14px; display: flex; flex-direction: column; gap: 6px; }
+.chat-list li { display: flex; align-items: stretch; gap: 6px; border: 1px solid var(--border); border-radius: 12px; background: var(--tint-1); overflow: hidden; }
+.chat-list li.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft), 0 0 18px rgba(229, 103, 122, 0.18); }
+.chat-list li:hover { border-color: var(--border-strong); background: var(--glass-hover); }
+.chat-list .open { flex: 1; min-width: 0; text-align: left; background: none; border: none; padding: 9px 12px; cursor: pointer; color: var(--ink); }
+.chat-list .open .t { display: block; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-list .open .m { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.chat-list .open .m strong { color: var(--accent); font-weight: 700; }
+.chat-list .del { background: none; border: none; border-left: 1px solid var(--rule); padding: 0 12px; cursor: pointer; color: var(--muted); font-size: 13px; }
+.chat-list .del:hover { color: var(--down); background: rgba(248, 113, 113, 0.10); }
+.btn.ghost.on { border-color: var(--accent); background: var(--accent-soft); }
+.suggestions.follow { margin-top: 4px; }
+.suggestions.follow .who { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
