@@ -88,6 +88,8 @@ export async function* runGemini(
   contextNote: string,
   client: GeminiClientLike = new GoogleGenAI({ apiKey: config.geminiKey() }) as unknown as GeminiClientLike,
 ): AsyncGenerator<ChatEvent> {
+  history.splice(0, history.length, ...compactGemini(history));
+  await refreshGeminiModels();
   const startLen = history.length;
   // Gemini has no mid-conversation system role, so the app context is prefixed to the user turn.
   history.push({ role: "user", parts: [{ text: `[${contextNote}]\n\nUser question: ${userText}` }] });
@@ -180,8 +182,44 @@ export function setRetryDelayForTests(ms: number) {
   retryDelayMs = ms;
 }
 
+/** Gemini models Google currently offers (fast "flash" text models), refreshed every 30 minutes. */
+let offered: { at: number; ids: string[] } | null = null;
+
+async function refreshGeminiModels(): Promise<void> {
+  if (!config.geminiKey() || (offered && Date.now() - offered.at < 30 * 60_000)) return;
+  try {
+    const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", { headers: { "x-goog-api-key": config.geminiKey()! } });
+    if (!res.ok) throw new Error(`${res.status} model list unavailable`);
+    const json = (await res.json()) as { models?: { name: string; supportedGenerationMethods?: string[] }[] };
+    const ids = (json.models ?? [])
+      .filter((m) => m.supportedGenerationMethods?.includes("generateContent"))
+      .map((m) => m.name.replace(/^models\//, ""))
+      .filter((id) => /flash/.test(id) && !/image|tts|audio|live|embed|thinking|exp/.test(id));
+    if (ids.length) offered = { at: Date.now(), ids };
+  } catch (err) {
+    console.error(`[ai] Gemini model list: ${(err as Error)?.message ?? err}`);
+  }
+}
+
+/** Preferred models that Google still offers, then its other flash models; without a list, the preferred ones. */
 export function modelChain(configured = config.geminiModel()): string[] {
-  return [...new Set([configured, ...FALLBACK_MODELS])];
+  const preferred = [...new Set([configured, ...FALLBACK_MODELS])];
+  if (!offered) return preferred;
+  const chain = [...preferred.filter((m) => offered!.ids.includes(m)), ...offered.ids.filter((id) => !preferred.includes(id)).slice(0, 3)];
+  return chain.length ? chain : preferred;
+}
+
+/** Earlier turns as plain questions and answers only (no tool data), last few exchanges; keeps requests small. */
+function compactGemini(history: Content[], keep = 6): Content[] {
+  return history
+    .map((c) => ({
+      role: c.role,
+      parts: c.parts
+        .filter((p) => typeof p.text === "string" && p.text.trim() && !p.thought)
+        .map((p) => ({ text: c.role === "user" ? String(p.text).replace(/^\[[\s\S]*?\]\n\nUser question: /, "") : String(p.text).slice(0, 2500) })),
+    }))
+    .filter((c) => c.parts.length)
+    .slice(-keep);
 }
 
 function attemptPlan(): { model: string; waitMs: number }[] {
