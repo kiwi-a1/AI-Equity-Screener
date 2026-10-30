@@ -44,8 +44,7 @@ async function preload(symbol: string | null): Promise<string> {
   return `\n\nPreloaded get_company_snapshot result for ${symbol} (retrieved just now; use it directly instead of calling that tool again):\n${res[0].slice(0, 5000)}`;
 }
 
-export async function* runAnalyst(req: ChatRequest, runners: Record<AiProvider, Runner> = RUNNERS): AsyncGenerator<ChatEvent> {
-  const providers = aiProviders();
+export async function* runAnalyst(req: ChatRequest, runners: Record<AiProvider, Runner> = RUNNERS, providers: AiProvider[] = aiProviders()): AsyncGenerator<ChatEvent> {
   if (!providers.length) {
     yield { type: "error", text: "The AI assistant is not set up yet. Please check back soon." };
     yield { type: "done", sources: { web: [], queries: [], data: [] }, history: [], provider: "none" };

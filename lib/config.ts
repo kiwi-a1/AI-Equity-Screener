@@ -23,7 +23,13 @@ export const config = {
 export type AiProvider = "anthropic" | "groq" | "gemini" | "openrouter";
 
 /**
- * Every AI service with a key set, fastest first. The chat uses the first and moves down the list
+ * The AI services the chat may use. Only Groq is switched on; the others stay in the code and can be
+ * turned back on by adding them here (in order of preference).
+ */
+export const ACTIVE_PROVIDERS: AiProvider[] = ["groq"];
+
+/**
+ * Every active AI service with a key set, fastest first. The chat uses the first and moves down the list
  * when one is busy, out of quota or failing. Empty means the chat is disabled.
  */
 export function aiProviders(): AiProvider[] {
@@ -33,7 +39,7 @@ export function aiProviders(): AiProvider[] {
     ["gemini", config.geminiKey()],
     ["openrouter", config.openrouterKey()],
   ];
-  return all.filter(([, key]) => key).map(([p]) => p);
+  return all.filter(([p, key]) => key && ACTIVE_PROVIDERS.includes(p)).map(([p]) => p);
 }
 
 export function aiProvider(): AiProvider | null {
