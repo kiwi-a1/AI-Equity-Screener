@@ -92,8 +92,8 @@ export default function Holders({ symbol, info, onContext }: SectionProps) {
                     {other !== null ? (
                       <div className="range" aria-label="Ownership split">
                         <div className="track" style={{ display: "flex", overflow: "hidden" }}>
-                          <div style={{ width: `${(insidersPct ?? 0) * 100}%`, background: "#c9a3bd" }} />
-                          <div style={{ width: `${(instPct ?? 0) * 100}%`, background: "linear-gradient(90deg, #e5677a, #f8b27a)" }} />
+                          <div style={{ width: `${(insidersPct ?? 0) * 100}%`, background: "#9898d4" }} />
+                          <div style={{ width: `${(instPct ?? 0) * 100}%`, background: "#0000ee" }} />
                         </div>
                         <div className="ends"><span>Insiders</span><span>Institutions</span><span>Other</span></div>
                       </div>
