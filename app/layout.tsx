@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
+import Interactive from "@/components/Interactive";
 import { THEME_BOOT_SCRIPT } from "@/components/theme";
 
 import "./globals.css";
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <span className="orb o2" />
           <span className="orb o3" />
         </div>
+        <Interactive />
         {children}
       </body>
     </html>

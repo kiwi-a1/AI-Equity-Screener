@@ -533,3 +533,76 @@ body {
   body.chat-open { overflow: hidden; }
   body.chat-open .chat-fab { display: none; }
 }
+
+/* ---------- interactive light: cursor glow, panel spotlight, click ripple ---------- */
+.cursor-glow {
+  position: fixed; left: -300px; top: -300px; width: 600px; height: 600px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(229, 103, 122, 0.16), rgba(248, 178, 122, 0.06) 40%, transparent 68%);
+  opacity: 0; transition: opacity .5s var(--ease); will-change: transform; z-index: -1;
+}
+.pointer-on .cursor-glow { opacity: 1; }
+:root[data-theme="light"] .cursor-glow { background: radial-gradient(circle, rgba(229, 103, 122, 0.12), rgba(248, 178, 122, 0.06) 40%, transparent 68%); }
+
+/* background orbs drift gently against the cursor */
+.orbs { inset: -40px; will-change: transform; }
+
+/* glass panels: soft spotlight inside and a glowing edge near the cursor */
+.block::after, .co-head::after, .masthead::after {
+  inset: 0; height: auto;
+  background: radial-gradient(420px circle at var(--mx, 50%) var(--my, -200px), rgba(229, 103, 122, 0), transparent 60%), linear-gradient(180deg, var(--tint-2), transparent 46%);
+  transition: background .3s;
+}
+.block.lit::after, .co-head.lit::after, .masthead.lit::after {
+  background: radial-gradient(420px circle at var(--mx) var(--my), rgba(229, 103, 122, 0.16), transparent 60%), linear-gradient(180deg, var(--tint-2), transparent 46%);
+}
+.block.lit::before, .co-head.lit::before, .masthead.lit::before {
+  background: radial-gradient(260px circle at var(--mx) var(--my), rgba(248, 178, 122, 0.85), transparent 70%),
+    linear-gradient(145deg, var(--edge), transparent 38%, transparent 70%, rgba(229, 103, 122, 0.25));
+}
+.block.lit { box-shadow: 0 10px 40px rgba(229, 103, 122, 0.10), 0 0 0 1px rgba(229, 103, 122, 0.12); }
+
+/* smaller surfaces: spotlight follows the cursor across them */
+.strip button.lit, .news-item.lit, .resources li a.lit, .suggestions button.lit, .tabs button.lit:not(.on) {
+  background: radial-gradient(160px circle at var(--mx) var(--my), rgba(229, 103, 122, 0.20), transparent 70%), var(--glass-hover);
+}
+.strip button:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(229, 103, 122, 0.16); }
+.news-item { border-radius: 14px; }
+.news-item:hover { transform: translateY(-2px); }
+.resources li a:hover, .suggestions button:hover:not(:disabled) { box-shadow: 0 0 0 1px rgba(229, 103, 122, 0.35), 0 6px 20px rgba(229, 103, 122, 0.14); }
+
+/* buttons respond to presses */
+button, .btn { transition: transform .15s var(--ease), background .25s var(--ease), box-shadow .25s var(--ease), border-color .25s var(--ease), color .2s; }
+button:active:not(:disabled), .btn:active { transform: scale(0.97); }
+
+/* click ripple */
+.ripple-host { position: relative; }
+.strip button, .tabs button, .suggestions button, .resources li a, .news-item, .seg button, .theme-toggle { position: relative; overflow: hidden; }
+.ripple {
+  position: absolute; border-radius: 50%; pointer-events: none; z-index: 0;
+  background: radial-gradient(circle, rgba(248, 178, 122, 0.35), rgba(229, 103, 122, 0.12) 45%, transparent 70%);
+  transform: scale(0); animation: ripple .65s var(--ease) forwards;
+}
+@keyframes ripple { to { transform: scale(1); opacity: 0; } }
+
+/* active tab and live elements glow */
+.tabs button.on { box-shadow: inset 0 0 0 1px rgba(229, 103, 122, 0.55), 0 0 22px rgba(229, 103, 122, 0.28); }
+.search-input:focus { box-shadow: 0 0 0 4px var(--accent-soft), 0 0 32px rgba(229, 103, 122, 0.25); }
+.chat-input textarea:focus { box-shadow: 0 0 0 4px var(--accent-soft), 0 0 28px rgba(229, 103, 122, 0.22); }
+.title em { background-size: 200% auto; animation: shimmer 8s linear infinite; }
+@keyframes shimmer { to { background-position: 200% center; } }
+
+/* price flashes green or red when it updates */
+.co-price .p.flash { border-radius: 8px; animation: flash-neutral 1.2s var(--ease); }
+.co-price .p.up-flash { animation-name: flash-up; }
+.co-price .p.down-flash { animation-name: flash-down; }
+@keyframes flash-up { 0% { background: rgba(74, 222, 128, 0.28); text-shadow: 0 0 18px rgba(74, 222, 128, 0.6); } 100% { background: transparent; text-shadow: none; } }
+@keyframes flash-down { 0% { background: rgba(248, 113, 113, 0.28); text-shadow: 0 0 18px rgba(248, 113, 113, 0.6); } 100% { background: transparent; text-shadow: none; } }
+@keyframes flash-neutral { 0% { text-shadow: 0 0 18px rgba(229, 103, 122, 0.5); } 100% { text-shadow: none; } }
+
+/* sections reveal as they come in */
+.block { animation: rise .6s var(--ease) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cursor-glow, .ripple { display: none; }
+  .orbs { transform: none; }
+}

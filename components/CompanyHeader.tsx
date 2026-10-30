@@ -26,7 +26,7 @@ export default function CompanyHeader({ info }: { info: CompanyInfo }) {
         </div>
       </div>
       <div className="co-price">
-        <span className="p num">{fmtNumber(info.price)}</span>
+        <span key={info.price ?? "na"} className={`p num flash ${changeClass(info.change)}-flash`}>{fmtNumber(info.price)}</span>
         <span className={`c num ${changeClass(info.change)}`}>{fmtChange(info.change, info.changePercent)}</span>
         {ext.map((e) => (
           <div className="co-ext num" key={e.label}>
