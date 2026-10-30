@@ -958,3 +958,10 @@ body, :root[data-theme="light"] body { background: var(--bg); }
 }
 /* room under the content so the floating AI Analyst button never covers the last rows */
 @media (max-width: 1100px) { .shell > main { padding-bottom: 92px; } }
+/* AI Analyst heading dot: green and glowing, like a live indicator */
+.chat-head h2 .dot { background: var(--up); box-shadow: 0 0 10px var(--up); animation: live-ping 1.8s ease-out infinite; }
+/* AI Analyst button: centred without a transform, so the press effect (a scale) cannot shift it sideways */
+@media (max-width: 1100px) {
+  .chat-fab { left: 0; right: 0; margin: 0 auto; width: max-content; transform: none; }
+  .chat-fab:active, button.chat-fab:active:not(:disabled) { transform: scale(0.96); }
+}
