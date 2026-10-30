@@ -283,9 +283,11 @@ const ChatPanel = forwardRef<ChatHandle, Props>(function ChatPanel({ symbol, inf
   return (
     <>
     <button type="button" className={`chat-fab${busy ? " busy" : ""}`} onClick={() => setMobileOpen(true)} aria-label="Open the AI analyst">
-      <span className="dot" aria-hidden /> Ask AI
+      <span className="dot" aria-hidden /> AI Analyst
     </button>
+    <div className={`chat-scrim${mobileOpen ? " open" : ""}`} onClick={() => setMobileOpen(false)} aria-hidden />
     <aside className={`chat-col${mobileOpen ? " open" : ""}`} aria-label="AI analyst">
+      <button type="button" className="chat-grip" onClick={() => setMobileOpen(false)} aria-label="Close the AI analyst" />
       <div className="chat-head">
         <div className="row">
           <h2><span className="dot" aria-hidden />AI Analyst</h2>
