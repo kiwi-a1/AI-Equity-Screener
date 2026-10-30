@@ -188,7 +188,7 @@ describe("Gemini busy handling", () => {
     const events = await collect(runGemini([] as never, "q", "ctx", fake as never));
     expect(events.filter((e) => e.type === "text").map((e) => (e as { text: string }).text).join("")).toBe("Answer.");
     expect(models[2]).toBe(modelChain()[1]);
-    expect(events.some((e) => e.type === "status" && /busy/.test((e as { text: string }).text))).toBe(true);
+    expect(events.some((e) => e.type === "status" && /busy/.test((e as { text: string }).text))).toBe(false);
   });
 
   it("shows a plain message, never raw JSON, when everything is busy", async () => {

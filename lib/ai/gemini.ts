@@ -107,10 +107,7 @@ export async function* runGemini(
       let lastErr: unknown = null;
       let done = false;
       for (const [n, attempt] of attemptPlan().entries()) {
-        if (n > 0) {
-          yield { type: "status", text: "The AI service is busy, retrying" };
-          await sleep(attempt.waitMs);
-        }
+        if (n > 0) await sleep(attempt.waitMs); // retried quietly; the thinking dots keep showing
         parts = [];
         calls = [];
         try {
