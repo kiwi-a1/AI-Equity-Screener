@@ -10,6 +10,8 @@ export interface Message {
   sources?: Sources;
   steps?: string[];
   error?: string;
+  /** The user stopped this answer before it finished. */
+  stopped?: boolean;
 }
 
 export interface Chat {

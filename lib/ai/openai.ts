@@ -21,11 +21,20 @@ interface Completion {
 }
 export type Fetcher = (body: Record<string, unknown>) => Promise<Completion>;
 
+/** One streamed piece of an answer: some text and/or parts of tool calls. */
+export interface Delta {
+  content?: string | null;
+  tool_calls?: { index: number; id?: string; function?: { name?: string; arguments?: string } }[];
+}
+export type Streamer = (body: Record<string, unknown>) => AsyncIterable<Delta>;
+
 export interface OpenAIService {
   name: "groq" | "openrouter";
   label: string;
   models: () => string[];
   call: Fetcher;
+  /** Streams the answer as it is written; without it the whole reply arrives at once. */
+  stream?: Streamer;
 }
 
 function fetcher(url: string, key: () => string | undefined, extra: Record<string, string> = {}): Fetcher {
@@ -41,6 +50,41 @@ function fetcher(url: string, key: () => string | undefined, extra: Record<strin
   };
 }
 
+/** Server-sent events from an OpenAI-compatible endpoint, as answer deltas. */
+function streamer(url: string, key: () => string | undefined, extra: Record<string, string> = {}): Streamer {
+  return async function* (body) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key()}`, "Content-Type": "application/json", ...extra },
+      body: JSON.stringify({ ...body, stream: true }),
+    });
+    if (!res.ok || !res.body) {
+      const json = (await res.json().catch(() => ({}))) as Completion;
+      throw new Error(`${res.status} ${json.error?.message ?? res.statusText}`);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) return;
+      buffer += decoder.decode(value, { stream: true });
+      let nl;
+      while ((nl = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, nl).trim();
+        buffer = buffer.slice(nl + 1);
+        if (!line.startsWith("data:")) continue; // comments and keep-alives
+        const data = line.slice(5).trim();
+        if (data === "[DONE]") return;
+        const chunk = JSON.parse(data) as { choices?: { delta?: Delta }[]; error?: { message?: string; code?: number } };
+        if (chunk.error) throw new Error(`${chunk.error.code ?? 500} ${chunk.error.message ?? "stream error"}`);
+        const delta = chunk.choices?.[0]?.delta;
+        if (delta) yield delta;
+      }
+    }
+  };
+}
+
 const uniq = (xs: string[]) => [...new Set(xs)];
 
 /** Groq: the fastest service. Models with reliable tool calling, quickest last as a safety net. */
@@ -49,6 +93,7 @@ export const groq = (): OpenAIService => ({
   label: "Groq",
   models: () => uniq([config.groqModel(), "llama-3.3-70b-versatile", "openai/gpt-oss-120b", "llama-3.1-8b-instant"]),
   call: fetcher("https://api.groq.com/openai/v1/chat/completions", config.groqKey),
+  stream: streamer("https://api.groq.com/openai/v1/chat/completions", config.groqKey),
 });
 
 export const openrouter = (): OpenAIService => ({
@@ -56,6 +101,7 @@ export const openrouter = (): OpenAIService => ({
   label: "OpenRouter",
   models: () => uniq([config.openrouterModel(), "google/gemini-2.5-flash", "meta-llama/llama-3.3-70b-instruct:free", "openai/gpt-oss-20b:free", "google/gemini-2.0-flash-exp:free"]),
   call: fetcher("https://openrouter.ai/api/v1/chat/completions", config.openrouterKey, { "X-Title": "Equity Screener" }),
+  stream: streamer("https://openrouter.ai/api/v1/chat/completions", config.openrouterKey, { "X-Title": "Equity Screener" }),
 });
 
 const WEB_SEARCH = {
@@ -102,19 +148,69 @@ async function webSearch(query: unknown, log: SourceLog): Promise<[string, boole
 /** Models that answered recently, per service, so a failing model is not re-tried on every step. */
 const working = new Map<string, string>();
 
-async function complete(svc: OpenAIService, body: Record<string, unknown>): Promise<Completion> {
-  let models = svc.models();
+function modelOrder(svc: OpenAIService): string[] {
+  const models = svc.models();
   const last = working.get(svc.name);
-  if (last && models.includes(last)) models = [last, ...models.filter((m) => m !== last)];
+  return last && models.includes(last) ? [last, ...models.filter((m) => m !== last)] : models;
+}
+
+const badKey = (err: unknown) => /\b401\b|\b403\b|invalid api key/i.test(`${(err as Error)?.message ?? err}`);
+
+async function complete(svc: OpenAIService, body: Record<string, unknown>): Promise<Completion> {
   let lastErr: unknown = null;
-  for (const model of models) {
+  for (const model of modelOrder(svc)) {
     try {
       const res = await svc.call({ ...body, model });
       working.set(svc.name, model);
       return res;
     } catch (err) {
       lastErr = err;
-      if (/\b401\b|\b403\b|invalid api key/i.test(`${(err as Error)?.message ?? err}`)) break; // a bad key fails every model
+      if (badKey(err)) break; // a bad key fails every model
+    }
+  }
+  throw lastErr;
+}
+
+type StepPiece = { text: string } | { message: { content: string; tool_calls: ToolCall[] } };
+
+/**
+ * One model turn, streamed: yields text as it arrives, then the whole message. Tries the next model if
+ * one fails before writing anything.
+ */
+async function* modelTurn(svc: OpenAIService, body: Record<string, unknown>): AsyncGenerator<StepPiece> {
+  if (!svc.stream) {
+    const msg = (await complete(svc, body)).choices?.[0]?.message;
+    if (!msg) throw new Error("empty response");
+    if (msg.content) yield { text: msg.content };
+    yield { message: { content: msg.content ?? "", tool_calls: msg.tool_calls ?? [] } };
+    return;
+  }
+  let lastErr: unknown = null;
+  for (const model of modelOrder(svc)) {
+    let content = "";
+    const calls: ToolCall[] = [];
+    let wrote = false;
+    try {
+      for await (const d of svc.stream({ ...body, model })) {
+        if (d.content) {
+          content += d.content;
+          wrote = true;
+          yield { text: d.content };
+        }
+        for (const tc of d.tool_calls ?? []) {
+          const c = (calls[tc.index] ??= { id: "", type: "function", function: { name: "", arguments: "" } });
+          if (tc.id) c.id = tc.id;
+          if (tc.function?.name) c.function.name += tc.function.name;
+          if (tc.function?.arguments) c.function.arguments += tc.function.arguments;
+        }
+      }
+      working.set(svc.name, model);
+      const toolCalls = calls.filter(Boolean).map((c, i) => ({ ...c, id: c.id || `call_${i}` }));
+      yield { message: { content, tool_calls: toolCalls } };
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (wrote || badKey(err)) throw err;
     }
   }
   throw lastErr;
@@ -127,12 +223,14 @@ export async function* runOpenAI(svc: OpenAIService, history: Msg[], userText: s
   const tools = openaiTools(webAvailable());
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
-      const res = await complete(svc, { messages: [{ role: "system", content: SYSTEM_PROMPT }, ...history], tools });
-      const msg = res.choices?.[0]?.message;
+      let msg: { content: string; tool_calls: ToolCall[] } | null = null;
+      for await (const piece of modelTurn(svc, { messages: [{ role: "system", content: SYSTEM_PROMPT }, ...history], tools })) {
+        if ("text" in piece) yield { type: "text", text: piece.text };
+        else msg = piece.message;
+      }
       if (!msg) throw new Error("empty response");
-      const calls = msg.tool_calls ?? [];
-      history.push({ role: "assistant", content: msg.content ?? "", ...(calls.length ? { tool_calls: calls } : {}) });
-      if (msg.content) yield { type: "text", text: msg.content };
+      const calls = msg.tool_calls;
+      history.push({ role: "assistant", content: msg.content, ...(calls.length ? { tool_calls: calls } : {}) });
       if (!calls.length) break;
 
       const parsed = calls.map((c) => {
