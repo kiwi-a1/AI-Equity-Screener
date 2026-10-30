@@ -622,3 +622,17 @@ button:active:not(:disabled), .btn:active { transform: scale(0.97); }
 .btn.ghost.on { border-color: var(--accent); background: var(--accent-soft); }
 .suggestions.follow { margin-top: 4px; }
 .suggestions.follow .who { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+
+/* ---------- mobile fit: nothing may push the page wider than the screen ---------- */
+html, body { max-width: 100%; overflow-x: clip; }
+.shell > main, .shell > * { min-width: 0; }
+.seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; }
+.seg::-webkit-scrollbar { display: none; }
+.seg button { white-space: nowrap; flex: 0 0 auto; scroll-snap-align: start; }
+.controls > * { max-width: 100%; }
+img, svg, video { max-width: 100%; }
+@media (max-width: 640px) {
+  .shell { padding: 12px; gap: 12px; }
+  .seg button { padding: 6px 11px; font-size: 14.5px; }
+  .seg { mask-image: linear-gradient(90deg, #000 85%, transparent); -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); }
+}
