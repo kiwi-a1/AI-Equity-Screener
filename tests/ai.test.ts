@@ -389,3 +389,22 @@ describe("model discovery", () => {
     expect(events.some((e) => e.type === "text")).toBe(true);
   });
 });
+
+describe("small follow-up requests", () => {
+  it("drops earlier tool data and keeps recent questions and answers", async () => {
+    const { compactHistory, retryAfterSeconds } = await import("@/lib/ai/openai");
+    const h = [
+      { role: "user", content: "[context]\n\nUser question: How is AAPL?" },
+      { role: "assistant", content: "", tool_calls: [{ id: "1" }] },
+      { role: "tool", tool_call_id: "1", content: "x".repeat(20000) },
+      { role: "assistant", content: "Apple is fine." },
+    ];
+    expect(compactHistory(h)).toEqual([
+      { role: "user", content: "How is AAPL?" },
+      { role: "assistant", content: "Apple is fine." },
+    ]);
+    expect(retryAfterSeconds(new Error("429 Rate limit reached. Please try again in 2.5s."))).toBe(2.5);
+    expect(retryAfterSeconds(new Error("Please try again in 1m30s"))).toBe(90);
+    expect(retryAfterSeconds(new Error("Please try again in 450ms"))).toBe(0.45);
+  });
+});

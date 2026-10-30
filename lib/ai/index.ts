@@ -41,7 +41,7 @@ async function preload(symbol: string | null): Promise<string> {
   const timeout = new Promise<null>((r) => setTimeout(() => r(null), 2500));
   const res = await Promise.race([executeTool("get_company_snapshot", { symbol }).catch(() => null), timeout]);
   if (!res || res[1]) return "";
-  return `\n\nPreloaded get_company_snapshot result for ${symbol} (retrieved just now; use it directly instead of calling that tool again):\n${res[0].slice(0, 5000)}`;
+  return `\n\nPreloaded get_company_snapshot result for ${symbol} (retrieved just now; use it directly instead of calling that tool again):\n${res[0].slice(0, 2500)}`;
 }
 
 export async function* runAnalyst(req: ChatRequest, runners: Record<AiProvider, Runner> = RUNNERS, providers: AiProvider[] = aiProviders()): AsyncGenerator<ChatEvent> {

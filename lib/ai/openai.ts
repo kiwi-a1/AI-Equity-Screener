@@ -199,6 +199,14 @@ function modelOrder(svc: OpenAIService): string[] {
   return last && models.includes(last) ? [last, ...models.filter((m) => m !== last)] : models;
 }
 
+/** "Please try again in 3.2s" style hints in rate-limit errors. */
+export function retryAfterSeconds(err: unknown): number | null {
+  const m = `${(err as Error)?.message ?? err}`.match(/try again in (?:(\d+)m)?([\d.]+)(m?s)/i);
+  if (!m) return null;
+  const secs = (m[1] ? Number(m[1]) * 60 : 0) + Number(m[2]) / (m[3].toLowerCase() === "ms" ? 1000 : 1);
+  return Number.isFinite(secs) ? secs : null;
+}
+
 const badKey = (err: unknown) => /\b401\b|\b403\b|invalid api key/i.test(`${(err as Error)?.message ?? err}`);
 
 async function complete(svc: OpenAIService, body: Record<string, unknown>): Promise<Completion> {
@@ -233,37 +241,64 @@ async function* modelTurn(svc: OpenAIService, body: Record<string, unknown>): As
   }
   let lastErr: unknown = null;
   for (const model of modelOrder(svc)) {
-    let content = "";
-    const calls: ToolCall[] = [];
-    let wrote = false;
-    try {
-      for await (const d of svc.stream({ ...body, model })) {
-        if (d.content) {
-          content += d.content;
-          wrote = true;
-          yield { text: d.content };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let content = "";
+      const calls: ToolCall[] = [];
+      let wrote = false;
+      try {
+        for await (const d of svc.stream({ ...body, model })) {
+          if (d.content) {
+            content += d.content;
+            wrote = true;
+            yield { text: d.content };
+          }
+          for (const tc of d.tool_calls ?? []) {
+            const c = (calls[tc.index] ??= { id: "", type: "function", function: { name: "", arguments: "" } });
+            if (tc.id) c.id = tc.id;
+            if (tc.function?.name) c.function.name += tc.function.name;
+            if (tc.function?.arguments) c.function.arguments += tc.function.arguments;
+          }
         }
-        for (const tc of d.tool_calls ?? []) {
-          const c = (calls[tc.index] ??= { id: "", type: "function", function: { name: "", arguments: "" } });
-          if (tc.id) c.id = tc.id;
-          if (tc.function?.name) c.function.name += tc.function.name;
-          if (tc.function?.arguments) c.function.arguments += tc.function.arguments;
+        working.set(svc.name, model);
+        const toolCalls = calls.filter(Boolean).map((c, i) => ({ ...c, id: c.id || `call_${i}` }));
+        yield { message: { content, tool_calls: toolCalls } };
+        return;
+      } catch (err) {
+        lastErr = err;
+        console.error(`[ai] ${svc.label} ${model}: ${(err as Error)?.message ?? err}`.slice(0, 400));
+        if (wrote || badKey(err)) throw err;
+        // A per-minute limit that resets within a few seconds: wait once, then retry the same model.
+        const wait = retryAfterSeconds(err);
+        if (attempt === 0 && wait !== null && wait <= 8) {
+          await new Promise((r) => setTimeout(r, wait * 1000 + 250));
+          continue;
         }
+        break;
       }
-      working.set(svc.name, model);
-      const toolCalls = calls.filter(Boolean).map((c, i) => ({ ...c, id: c.id || `call_${i}` }));
-      yield { message: { content, tool_calls: toolCalls } };
-      return;
-    } catch (err) {
-      lastErr = err;
-      console.error(`[ai] ${svc.label} ${model}: ${(err as Error)?.message ?? err}`.slice(0, 400));
-      if (wrote || badKey(err)) throw err;
     }
   }
   throw lastErr;
 }
 
+/**
+ * Earlier turns are kept as plain questions and answers: the raw tool data they used is dropped and only
+ * the last few exchanges are kept. This keeps follow-up requests small, which matters on free tiers that
+ * cap tokens per minute.
+ */
+export function compactHistory(history: Msg[], keep = 6): Msg[] {
+  const turns = history
+    .filter((m) => (m.role === "user" && typeof m.content === "string") || (m.role === "assistant" && typeof m.content === "string" && m.content.trim()))
+    .map((m) => ({
+      role: m.role,
+      content: m.role === "user" ? String(m.content).replace(/^\[[\s\S]*?\]\n\nUser question: /, "") : String(m.content).slice(0, 2500),
+    }));
+  return turns.slice(-keep);
+}
+
+const TOOL_RESULT_MAX = 6000;
+
 export async function* runOpenAI(svc: OpenAIService, history: Msg[], userText: string, contextNote: string): AsyncGenerator<ChatEvent> {
+  history.splice(0, history.length, ...compactHistory(history));
   const startLen = history.length;
   history.push({ role: "user", content: `[${contextNote}]\n\nUser question: ${userText}` });
   const log = new SourceLog();
@@ -295,7 +330,7 @@ export async function* runOpenAI(svc: OpenAIService, history: Msg[], userText: s
       for (let i = 0; i < calls.length; i++) {
         const [content, isError] = outputs[i];
         if (!isError && calls[i].function.name !== "web_search") log.addToolResult(calls[i].function.name, parsed[i], content);
-        history.push({ role: "tool", tool_call_id: calls[i].id, content });
+        history.push({ role: "tool", tool_call_id: calls[i].id, content: content.length > TOOL_RESULT_MAX ? `${content.slice(0, TOOL_RESULT_MAX)} ...(truncated)` : content });
         yield { type: "step", text: describeToolCall(calls[i].function.name, parsed[i]), isError };
       }
       if (step === MAX_STEPS - 1) yield { type: "error", text: "Stopped after too many research steps; the answer may be incomplete." };
