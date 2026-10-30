@@ -1,12 +1,12 @@
 "use client";
-/** Dark / light theme: a toggle button and a hook. The choice is stored per browser; first visit follows the device setting. */
+/** Dark / light theme: a toggle button and a hook. The choice is stored per browser; first visit opens in dark mode. */
 import { useEffect, useState } from "react";
 
 export type Theme = "dark" | "light";
 export const THEME_KEY = "equity-screener-theme";
 
 /** Runs before first paint (inlined in app/layout.tsx) so the page never flashes the wrong theme. */
-export const THEME_BOOT_SCRIPT = `(function(){try{var t=localStorage.getItem("${THEME_KEY}");if(t!=="light"&&t!=="dark"){t=window.matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"}document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme="dark"}})();`;
+export const THEME_BOOT_SCRIPT = `(function(){try{var t=localStorage.getItem("${THEME_KEY}");if(t!=="light"&&t!=="dark"){t="dark"}document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme="dark"}})();`;
 
 function current(): Theme {
   if (typeof document === "undefined") return "dark";
