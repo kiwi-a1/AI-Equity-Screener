@@ -48,11 +48,22 @@ async function webSearch(client: GeminiClientLike, query: unknown, log: SourceLo
   if (typeof query !== "string" || !query.trim()) return [JSON.stringify({ error: "query must be a non-empty string" }), true];
   log.addQuery(query);
   try {
-    const res = await client.models.generateContent({
-      model: config.geminiModel(),
-      contents: `Research this for a financial analyst and summarize the findings with publication dates: ${query}`,
-      config: { tools: [{ googleSearch: {} }] },
-    });
+    let res: ChunkLike | null = null;
+    let lastErr: unknown = null;
+    for (const model of modelChain(activeModel ?? config.geminiModel())) {
+      try {
+        res = await client.models.generateContent({
+          model,
+          contents: `Research this for a financial analyst and summarize the findings with publication dates: ${query}`,
+          config: { tools: [{ googleSearch: {} }] },
+        });
+        break;
+      } catch (err) {
+        lastErr = err;
+        if (!isBusyError(err)) break;
+      }
+    }
+    if (!res) throw lastErr;
     const found: { title: string | undefined; url: string }[] = [];
     for (const ch of res.candidates?.[0]?.groundingMetadata?.groundingChunks ?? []) {
       if (ch.web?.uri) {
@@ -84,20 +95,41 @@ export async function* runGemini(
 
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
-      const parts: Part[] = [];
-      const calls: { name: string; args: Record<string, unknown> }[] = [];
-      const stream = await client.models.generateContentStream({ model: config.geminiModel(), contents: history, config: cfg });
-      for await (const chunk of stream) {
-        for (const part of chunk.candidates?.[0]?.content?.parts ?? []) {
-          parts.push(part);
-          if (part.functionCall?.name) {
-            calls.push({ name: part.functionCall.name, args: part.functionCall.args ?? {} });
-            yield { type: "status", text: describeToolCall(part.functionCall.name, null) };
-          } else if (part.text && !part.thought) {
-            yield { type: "text", text: part.text };
+      let parts: Part[] = [];
+      let calls: { name: string; args: Record<string, unknown> }[] = [];
+      // Busy-server handling: retry with backoff, then fall back to lighter models. A step is only
+      // retried if it failed before producing any output, so nothing is shown twice.
+      let lastErr: unknown = null;
+      let done = false;
+      for (const [n, attempt] of attemptPlan().entries()) {
+        if (n > 0) {
+          yield { type: "status", text: "The AI service is busy, retrying" };
+          await sleep(attempt.waitMs);
+        }
+        parts = [];
+        calls = [];
+        try {
+          const stream = await client.models.generateContentStream({ model: attempt.model, contents: history, config: cfg });
+          for await (const chunk of stream) {
+            for (const part of chunk.candidates?.[0]?.content?.parts ?? []) {
+              parts.push(part);
+              if (part.functionCall?.name) {
+                calls.push({ name: part.functionCall.name, args: part.functionCall.args ?? {} });
+                yield { type: "status", text: describeToolCall(part.functionCall.name, null) };
+              } else if (part.text && !part.thought) {
+                yield { type: "text", text: part.text };
+              }
+            }
           }
+          activeModel = attempt.model;
+          done = true;
+          break;
+        } catch (err) {
+          lastErr = err;
+          if (parts.length || !isBusyError(err)) throw err;
         }
       }
+      if (!done) throw lastErr;
       history.push({ role: "model", parts: parts.length ? parts : [{ text: "" }] });
       if (!calls.length) break;
 
@@ -125,9 +157,42 @@ export async function* runGemini(
   yield { type: "done", sources: log.toJSON(), history, provider: "gemini" };
 }
 
+const BUSY = /\b(429|500|502|503|504)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|overloaded|high demand|try again later|DEADLINE_EXCEEDED/i;
+
+export function isBusyError(err: unknown): boolean {
+  return BUSY.test(`${(err as Error)?.message ?? err}`);
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Configured model first, then lighter fallbacks; each with one retry after a short wait. */
+export const FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+let activeModel: string | null = null;
+let retryDelayMs = 1200;
+export function setRetryDelayForTests(ms: number) {
+  retryDelayMs = ms;
+}
+
+export function modelChain(configured = config.geminiModel()): string[] {
+  return [...new Set([configured, ...FALLBACK_MODELS])];
+}
+
+function attemptPlan(): { model: string; waitMs: number }[] {
+  const chain = modelChain();
+  // Prefer the model that last worked in this server instance, so a busy primary is not re-tried every step.
+  if (activeModel && chain.includes(activeModel)) chain.unshift(...chain.splice(chain.indexOf(activeModel), 1));
+  return chain.flatMap((model, i) => [
+    { model, waitMs: i === 0 ? 0 : retryDelayMs / 2 },
+    { model, waitMs: retryDelayMs },
+  ]);
+}
+
+/** Plain-language error for the chat, never raw JSON. */
 export function describeGeminiError(err: unknown): string {
   const msg = `${(err as Error)?.message ?? err}`;
-  if (/API key|PERMISSION_DENIED|401|403/i.test(msg)) return "The Gemini API key is missing or invalid.";
-  if (/429|RESOURCE_EXHAUSTED|quota/i.test(msg)) return "The Gemini rate limit or free quota was reached. Wait a minute and try again.";
-  return `AI service error: ${msg.slice(0, 300)}`;
+  if (/API key|PERMISSION_DENIED|\b401\b|\b403\b/i.test(msg)) return "The Gemini API key is missing or invalid. Check GEMINI_API_KEY in the site settings.";
+  if (/RESOURCE_EXHAUSTED|quota|\b429\b/i.test(msg)) return "The AI usage limit was reached for now. Please wait a minute and try again.";
+  if (isBusyError(err)) return "The AI service is very busy right now. Please try again in a moment.";
+  if (/not found|\b404\b/i.test(msg)) return "The configured AI model is not available. Check GEMINI_MODEL in the site settings.";
+  return "The AI service could not answer right now. Please try again.";
 }
