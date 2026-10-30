@@ -634,7 +634,6 @@ img, svg, video { max-width: 100%; }
 @media (max-width: 640px) {
   .shell { padding: 12px; gap: 12px; }
   .seg button { padding: 6px 11px; font-size: 14.5px; }
-  .seg { mask-image: linear-gradient(90deg, #000 85%, transparent); -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); }
 }
 
 /* tabs never squeeze their labels: they keep full width and the row scrolls sideways */
@@ -662,3 +661,9 @@ img, svg, video { max-width: 100%; }
 @media (max-width: 760px) {
   .seg-wrap { display: flex; width: 100%; }
 }
+
+/* company header wraps whenever the price does not fit beside the name, at any screen width */
+.co-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; column-gap: 24px; row-gap: 12px; }
+.co-head > div:first-child { flex: 1 1 300px; min-width: 0; }
+.co-head > .co-price { flex: 0 1 auto; min-width: 0; }
+.co-name { overflow-wrap: anywhere; }
