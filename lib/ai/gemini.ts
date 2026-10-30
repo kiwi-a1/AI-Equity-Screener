@@ -60,7 +60,7 @@ async function webSearch(client: GeminiClientLike, query: unknown, log: SourceLo
         break;
       } catch (err) {
         lastErr = err;
-        if (!isBusyError(err)) break;
+        if (!canFallBack(err)) break;
       }
     }
     if (!res) throw lastErr;
@@ -126,7 +126,7 @@ export async function* runGemini(
           break;
         } catch (err) {
           lastErr = err;
-          if (parts.length || !isBusyError(err)) throw err;
+          if (parts.length || !canFallBack(err)) throw err;
         }
       }
       if (!done) throw lastErr;
@@ -163,10 +163,15 @@ export function isBusyError(err: unknown): boolean {
   return BUSY.test(`${(err as Error)?.message ?? err}`);
 }
 
+/** Busy servers and unknown or retired model names both move on to the next model in the chain. */
+export function canFallBack(err: unknown): boolean {
+  return isBusyError(err) || /not found|NOT_FOUND|\b404\b|not supported/i.test(`${(err as Error)?.message ?? err}`);
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Configured model first, then lighter fallbacks; each with one retry after a short wait. */
-export const FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+export const FALLBACK_MODELS = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-flash-lite-latest", "gemini-2.5-flash-lite"];
 let activeModel: string | null = null;
 let retryDelayMs = 1200;
 export function setRetryDelayForTests(ms: number) {
