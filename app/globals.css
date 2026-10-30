@@ -780,3 +780,19 @@ img, svg, video { max-width: 100%; }
   .rv { opacity: 1; transform: none; }
   .tab-ink { transition: none; }
 }
+
+/* AI Analyst button on phones: a stronger, more frequent glow */
+@media (max-width: 1100px) {
+  .chat-fab { animation: fab-glow 1.6s ease-in-out infinite; }
+  .chat-fab .dot { animation-duration: 1.1s; }
+  @keyframes fab-glow {
+    0%, 100% { box-shadow: 0 12px 32px rgba(91, 42, 122, 0.55), 0 0 0 1px rgba(255, 208, 140, 0.35), 0 0 22px rgba(229, 103, 122, 0.45); }
+    50% { box-shadow: 0 12px 32px rgba(91, 42, 122, 0.55), 0 0 0 2px rgba(255, 208, 140, 0.7), 0 0 46px rgba(248, 178, 122, 0.85), 0 0 80px rgba(229, 103, 122, 0.5); }
+  }
+}
+
+/* AI Analyst button sits at the bottom centre on phones */
+@media (max-width: 1100px) {
+  .chat-fab { right: auto; left: 50%; transform: translateX(-50%); white-space: nowrap; }
+  .chat-fab:active { transform: translateX(-50%) scale(0.96); }
+}
