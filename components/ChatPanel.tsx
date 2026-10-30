@@ -84,6 +84,7 @@ const ChatPanel = forwardRef<ChatHandle, Props>(function ChatPanel({ symbol, inf
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
+  const [mobileOpen, setMobileOpen] = useState(false); // phones: chat opens as a full-screen sheet
   const bodyRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -186,7 +187,13 @@ const ChatPanel = forwardRef<ChatHandle, Props>(function ChatPanel({ symbol, inf
     [busy, history, provider, symbol, info, context],
   );
 
-  useImperativeHandle(ref, () => ({ ask: (q: string) => void send(q) }), [send]);
+  useImperativeHandle(ref, () => ({ ask: (q: string) => { setMobileOpen(true); void send(q); } }), [send]);
+
+  useEffect(() => {
+    // Lock page scroll behind the full-screen chat on phones.
+    document.body.classList.toggle("chat-open", mobileOpen);
+    return () => document.body.classList.remove("chat-open");
+  }, [mobileOpen]);
 
   const reset = () => {
     abortRef.current?.abort();
@@ -199,14 +206,30 @@ const ChatPanel = forwardRef<ChatHandle, Props>(function ChatPanel({ symbol, inf
   const sectionLabel = context ? SECTIONS.find((s) => s.id === context.section)?.label : null;
   const suggestions = context ? SUGGESTED_PROMPTS[context.section] : ["Summarize today's market news and what is driving stocks", "Which large technology companies have the strongest margins?", "Explain what a P/E ratio tells an investor"];
 
+  const Thinking = ({ text }: { text: string }) => (
+    <div className="status" role="status">
+      {text.replace(/\.+$/, "")}
+      <span className="typing" aria-hidden><i /><i /><i /></span>
+    </div>
+  );
+
   return (
-    <aside className="chat-col" aria-label="AI analyst">
+    <>
+    <button type="button" className={`chat-fab${busy ? " busy" : ""}`} onClick={() => setMobileOpen(true)} aria-label="Open the AI analyst">
+      <span className="dot" aria-hidden /> Ask AI
+    </button>
+    <aside className={`chat-col${mobileOpen ? " open" : ""}`} aria-label="AI analyst">
       <div className="chat-head">
         <div className="row">
           <h2><span className="dot" aria-hidden />AI Analyst</h2>
-          <button className="btn ghost" type="button" onClick={reset} disabled={!messages.length && !busy}>
-            New chat
-          </button>
+          <span style={{ display: "flex", gap: 8 }}>
+            <button className="btn ghost" type="button" onClick={reset} disabled={!messages.length && !busy}>
+              New chat
+            </button>
+            <button className="btn ghost chat-close" type="button" onClick={() => setMobileOpen(false)} aria-label="Close the AI analyst">
+              Close
+            </button>
+          </span>
         </div>
         <div className="ctx">{symbol ? `Following ${info?.name ?? symbol}${sectionLabel ? `, ${sectionLabel}` : ""}` : "Select a company to give the analyst context"}</div>
       </div>
@@ -235,8 +258,8 @@ const ChatPanel = forwardRef<ChatHandle, Props>(function ChatPanel({ symbol, inf
             <div className="who">{m.role === "user" ? "You" : "Analyst"}</div>
             <div className="text">
               {m.role === "assistant" ? <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: (p) => <a {...p} target="_blank" rel="noopener noreferrer" /> }}>{m.text}</ReactMarkdown> : m.text}
-              {m.role === "assistant" && !m.text && busy && i === messages.length - 1 ? <div className="status">{status || "Thinking"}</div> : null}
-              {m.role === "assistant" && m.text && busy && i === messages.length - 1 && status ? <div className="status">{status}</div> : null}
+              {m.role === "assistant" && !m.text && busy && i === messages.length - 1 ? <Thinking text={status || "Thinking"} /> : null}
+              {m.role === "assistant" && m.text && busy && i === messages.length - 1 && status ? <Thinking text={status} /> : null}
             </div>
             {m.error ? <div className="err small">{m.error}</div> : null}
             {m.role === "assistant" && !(busy && i === messages.length - 1) ? <Evidence sources={m.sources} steps={m.steps} /> : null}
@@ -271,6 +294,7 @@ const ChatPanel = forwardRef<ChatHandle, Props>(function ChatPanel({ symbol, inf
         </div>
       </form>
     </aside>
+    </>
   );
 });
 

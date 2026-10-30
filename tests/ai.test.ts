@@ -3,13 +3,14 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { runClaude } from "@/lib/ai/anthropic";
 import { buildContextNote } from "@/lib/ai/context";
 import type { ChatEvent } from "@/lib/ai/events";
-import { geminiDeclarations, runGemini } from "@/lib/ai/gemini";
+import { describeGeminiError, geminiDeclarations, modelChain, runGemini, setRetryDelayForTests } from "@/lib/ai/gemini";
 import { SourceLog } from "@/lib/ai/sources";
 import { executeTool, TOOL_NAMES, TOOLS } from "@/lib/ai/tools";
 import { invalidate } from "@/lib/cache";
 import { MOCK_UNKNOWN } from "@/lib/data/mock";
 
 beforeAll(() => {
+  setRetryDelayForTests(0);
   process.env.DATA_PROVIDER = "mock";
   invalidate();
 });
@@ -166,7 +167,35 @@ describe("Gemini runner (scripted client)", () => {
     const fake = { models: { generateContentStream: async () => { throw new Error("429 RESOURCE_EXHAUSTED"); }, generateContent: async () => ({}) } };
     const history = [{ role: "user", parts: [] }];
     const events = await collect(runGemini(history as never, "q", "ctx", fake as never));
-    expect((events[0] as { text: string }).text).toMatch(/quota/);
+    expect((events.find((e) => e.type === "error") as { text: string }).text).toMatch(/usage limit/);
     expect(history).toHaveLength(1);
+  });
+});
+
+describe("Gemini busy handling", () => {
+  it("retries a busy model, then falls back to a lighter one", async () => {
+    const models: string[] = [];
+    const fake = {
+      models: {
+        generateContentStream: async (p: { model: string }) => {
+          models.push(p.model);
+          if (models.length < 3) throw new Error('{"error":{"code":503,"status":"UNAVAILABLE","message":"This model is currently experiencing high demand."}}');
+          return (async function* () { yield { candidates: [{ content: { parts: [{ text: "Answer." }] } }] }; })();
+        },
+        generateContent: async () => ({}),
+      },
+    };
+    const events = await collect(runGemini([] as never, "q", "ctx", fake as never));
+    expect(events.filter((e) => e.type === "text").map((e) => (e as { text: string }).text).join("")).toBe("Answer.");
+    expect(models[2]).toBe(modelChain()[1]);
+    expect(events.some((e) => e.type === "status" && /busy/.test((e as { text: string }).text))).toBe(true);
+  });
+
+  it("shows a plain message, never raw JSON, when everything is busy", async () => {
+    const fake = { models: { generateContentStream: async () => { throw new Error('{"error":{"code":503,"status":"UNAVAILABLE"}}'); }, generateContent: async () => ({}) } };
+    const events = await collect(runGemini([] as never, "q", "ctx", fake as never));
+    const err = events.find((e) => e.type === "error") as { text: string };
+    expect(err.text).toBe("The AI service is very busy right now. Please try again in a moment.");
+    expect(describeGeminiError(new Error("API key not valid"))).toMatch(/GEMINI_API_KEY/);
   });
 });
