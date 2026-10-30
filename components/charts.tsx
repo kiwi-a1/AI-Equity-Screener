@@ -8,32 +8,32 @@ import { movingAverage } from "@/lib/metrics";
 import { useTheme, type Theme } from "./theme";
 import type { PriceBar } from "@/lib/types";
 
-/** Chart colours for each theme, drawn from the site palette. */
+/** Chart colours for each theme, drawn from the blue site palette; green and red keep their up/down meaning. */
 function palette(theme: Theme) {
   const dark = theme === "dark";
-  const INK = dark ? "#fdebe0" : "#170a24";
+  const INK = dark ? "#dedeff" : "#00001f";
   return {
     INK,
-    ACCENT: dark ? "#e5677a" : "#c95a76",
+    ACCENT: dark ? "#2b2bff" : "#0000ee",
     UP: dark ? "#4ade80" : "#15803d",
     DOWN: dark ? "#f87171" : "#b91c1c",
-    RULE: dark ? "rgba(201,163,189,0.14)" : "rgba(58,29,82,0.12)",
-    VOLUME: dark ? "rgba(229,103,122,0.25)" : "rgba(229,103,122,0.22)",
-    MUTED: dark ? "#c9a3bd" : "#7a4a6e",
-    SERIES: dark ? ["#e5677a", "#f8b27a", "#b24e78", "#ffd08c", "#833a7a", "#f28f79"] : ["#c95a76", "#5b2a7a", "#f28f79", "#9b4478", "#e5677a", "#833a7a"],
-    FONT: { fontFamily: '"Times New Roman", Times, serif', fontSize: 13, fill: dark ? "#c9a3bd" : "#7a4a6e" },
+    RULE: dark ? "rgba(152, 152, 212, 0.14)" : "rgba(0, 0, 102, 0.12)",
+    VOLUME: dark ? "rgba(0, 0, 238, 0.25)" : "rgba(0, 0, 238, 0.22)",
+    MUTED: dark ? "#9898d4" : "#3b3b89",
+    SERIES: dark ? ["#2b2bff", "#aab2ff", "#0000ee", "#5c5cff", "#dedeff", "#0000aa"] : ["#0000ee", "#000066", "#5c5cff", "#0000aa", "#9898d4", "#00001f"],
+    FONT: { fontFamily: '"Times New Roman", Times, serif', fontSize: 13, fill: dark ? "#9898d4" : "#3b3b89" },
     TOOLTIP: {
       contentStyle: {
         fontFamily: '"Times New Roman", Times, serif',
-        background: dark ? "rgba(23,10,36,0.82)" : "rgba(255,255,255,0.82)",
+        background: dark ? "rgba(0, 0, 31, 0.82)" : "rgba(255,255,255,0.82)",
         backdropFilter: "blur(14px)",
-        border: dark ? "1px solid rgba(201,163,189,0.25)" : "1px solid rgba(58,29,82,0.15)",
+        border: dark ? "1px solid rgba(152, 152, 212, 0.25)" : "1px solid rgba(0, 0, 102, 0.15)",
         borderRadius: 12,
         color: INK,
       },
-      labelStyle: { color: dark ? "#c9a3bd" : "#7a4a6e" },
+      labelStyle: { color: dark ? "#9898d4" : "#3b3b89" },
       itemStyle: { color: INK },
-      cursor: { fill: dark ? "rgba(255,255,255,0.05)" : "rgba(58,29,82,0.05)", stroke: dark ? "rgba(255,255,255,0.2)" : "rgba(58,29,82,0.2)" },
+      cursor: { fill: dark ? "rgba(255,255,255,0.05)" : "rgba(0, 0, 102, 0.05)", stroke: dark ? "rgba(255,255,255,0.2)" : "rgba(0, 0, 102, 0.2)" },
     },
   };
 }
@@ -65,7 +65,7 @@ export function PriceChart({ bars, adjusted = false, showMA = true, height = 380
           <Bar yAxisId="v" dataKey="volume" name="Volume" fill={VOLUME} isAnimationActive={false} />
           <Line yAxisId="p" dataKey="close" name={adjusted ? "Adj Close" : "Close"} stroke={color} strokeWidth={1.8} dot={false} isAnimationActive animationDuration={1100} animationEasing="ease-out" />
           {showMA ? <Line yAxisId="p" dataKey="ma50" name="50-period average" stroke={MUTED} strokeWidth={1} dot={false} isAnimationActive animationDuration={1100} animationEasing="ease-out" /> : null}
-          {showMA ? <Line yAxisId="p" dataKey="ma200" name="200-period average" stroke="#f8b27a" strokeWidth={1} strokeDasharray="4 3" dot={false} isAnimationActive animationDuration={1100} animationEasing="ease-out" /> : null}
+          {showMA ? <Line yAxisId="p" dataKey="ma200" name="200-period average" stroke="#5c5cff" strokeWidth={1} strokeDasharray="4 3" dot={false} isAnimationActive animationDuration={1100} animationEasing="ease-out" /> : null}
           <Legend wrapperStyle={{ ...FONT, paddingTop: 6 }} />
         </ComposedChart>
       </ResponsiveContainer>
@@ -82,16 +82,10 @@ export function Sparkline({ bars, height = 200 }: { bars: PriceBar[]; height?: n
   return (
     <ResponsiveContainer width="100%" height={height}>
       <AreaChart data={data} margin={{ top: 6, right: 0, bottom: 0, left: 0 }}>
-        <defs>
-          <linearGradient id="spark" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity={0.35} />
-            <stop offset="100%" stopColor={color} stopOpacity={0} />
-          </linearGradient>
-        </defs>
         <XAxis dataKey="date" hide />
         <YAxis hide domain={["auto", "auto"]} />
         <Tooltip {...TOOLTIP} labelFormatter={(l) => fullDate(String(l))} formatter={(v) => [fmtNumber(v), "Close"]} />
-        <Area dataKey="close" stroke={color} strokeWidth={1.8} fill="url(#spark)" isAnimationActive animationDuration={1100} animationEasing="ease-out" />
+        <Area dataKey="close" stroke={color} strokeWidth={1.8} fill={color} fillOpacity={0.12} isAnimationActive animationDuration={1100} animationEasing="ease-out" />
       </AreaChart>
     </ResponsiveContainer>
   );

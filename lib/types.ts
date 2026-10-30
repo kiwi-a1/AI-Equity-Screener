@@ -35,6 +35,8 @@ export interface Quote {
   preMarketChangePercent: Num;
   postMarketPrice: Num;
   postMarketChangePercent: Num;
+  /** Shares traded today, when known. */
+  volume?: Num;
 }
 
 /** Full company profile + quote + key statistics, flattened. Keys follow Yahoo field names. */

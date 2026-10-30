@@ -116,6 +116,7 @@ async function quoteFromHistory(symbol: string): Promise<Quote | null> {
     symbol, name: null, currency: h.currency, exchange: null, price: last, change,
     changePercent: change !== null && prev ? (change / prev) * 100 : null, marketState: null,
     preMarketPrice: null, preMarketChangePercent: null, postMarketPrice: null, postMarketChangePercent: null,
+    volume: bars[bars.length - 1].volume ?? null,
   };
 }
 

@@ -43,6 +43,7 @@ function mockQuote(symbol: string): Quote {
     exchange: symbol.endsWith(".NS") ? "NSE" : "NasdaqGS", price, change,
     changePercent: (change / (price - change)) * 100, marketState: "REGULAR",
     preMarketPrice: null, preMarketChangePercent: null, postMarketPrice: price + 0.4, postMarketChangePercent: 0.21,
+    volume: Math.round(rng(symbol + "v")() * 9e7 + 1e6),
   };
 }
 
