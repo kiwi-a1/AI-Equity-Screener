@@ -200,26 +200,68 @@ describe("Gemini busy handling", () => {
   });
 });
 
-describe("openrouter runner", () => {
+describe("openai-compatible runner", () => {
+  const svc = (call: import("@/lib/ai/openai").Fetcher) => ({ name: "groq" as const, label: "Groq", models: () => ["m1", "m2"], call });
   it("runs a tool call then answers", async () => {
-    const { runOpenRouter } = await import("@/lib/ai/openrouter");
+    const { runOpenAI } = await import("@/lib/ai/openai");
     let n = 0;
     const fake = async () =>
       n++ === 0
         ? { choices: [{ message: { content: "", tool_calls: [{ id: "c1", type: "function" as const, function: { name: "get_company_snapshot", arguments: '{"symbol":"AAPL"}' } }] } }] }
         : { choices: [{ message: { content: "Apple looks fine." } }] };
     const events = [];
-    for await (const e of runOpenRouter([], "How is AAPL?", "ctx", fake)) events.push(e);
+    for await (const e of runOpenAI(svc(fake), [], "How is AAPL?", "ctx")) events.push(e);
     expect(events.some((e) => e.type === "step")).toBe(true);
     expect(events.filter((e) => e.type === "text").map((e) => (e as { text: string }).text).join("")).toContain("Apple");
     expect(events.at(-1)?.type).toBe("done");
   });
+  it("tries the next model when one fails", async () => {
+    const { runOpenAI } = await import("@/lib/ai/openai");
+    const seen: string[] = [];
+    const fake = async (b: Record<string, unknown>) => {
+      seen.push(b.model as string);
+      if (b.model === "m1") throw new Error("503 overloaded");
+      return { choices: [{ message: { content: "ok" } }] };
+    };
+    const events = [];
+    for await (const e of runOpenAI(svc(fake), [], "hi", "ctx")) events.push(e);
+    expect(seen).toEqual(["m1", "m2"]);
+    expect(events.some((e) => e.type === "text")).toBe(true);
+  });
   it("rolls back and explains errors", async () => {
-    const { runOpenRouter } = await import("@/lib/ai/openrouter");
+    const { runOpenAI } = await import("@/lib/ai/openai");
     const h: Record<string, unknown>[] = [];
     const events = [];
-    for await (const e of runOpenRouter(h, "hi", "ctx", async () => { throw new Error("401 bad key"); })) events.push(e);
+    for await (const e of runOpenAI(svc(async () => { throw new Error("401 bad key"); }), h, "hi", "ctx")) events.push(e);
     expect(h.length).toBe(0);
-    expect(events.some((e) => e.type === "error" && /OPENROUTER_API_KEY/.test(e.text))).toBe(true);
+    expect(events.some((e) => e.type === "error" && /GROQ_API_KEY/.test(e.text))).toBe(true);
+  });
+});
+
+describe("provider failover", () => {
+  it("moves to the next service when the first fails before answering", async () => {
+    process.env.GROQ_API_KEY = "x";
+    process.env.GEMINI_API_KEY = "y";
+    const { runAnalyst } = await import("@/lib/ai");
+    const done = { web: [], queries: [], data: [] };
+    const runners = {
+      anthropic: async function* () {},
+      groq: async function* () {
+        yield { type: "error" as const, text: "busy" };
+        yield { type: "done" as const, sources: done, history: [], provider: "groq" };
+      },
+      gemini: async function* () {
+        yield { type: "text" as const, text: "answer" };
+        yield { type: "done" as const, sources: done, history: [], provider: "gemini" };
+      },
+      openrouter: async function* () {},
+    };
+    const events = [];
+    for await (const e of runAnalyst({ message: "hi", history: [], provider: null, context: { symbol: null, company: null, section: null, filters: {}, visible: {} } }, runners)) events.push(e);
+    delete process.env.GROQ_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+    expect(events.some((e) => e.type === "error")).toBe(false);
+    expect(events.some((e) => e.type === "text")).toBe(true);
+    expect((events.at(-1) as { provider: string }).provider).toBe("gemini");
   });
 });

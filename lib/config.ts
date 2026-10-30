@@ -13,19 +13,31 @@ export const config = {
   anthropicKey: () => env("ANTHROPIC_API_KEY"),
   openrouterKey: () => env("OPENROUTER_API_KEY"),
   openrouterModel: () => env("OPENROUTER_MODEL") ?? "openai/gpt-4o-mini",
+  groqKey: () => env("GROQ_API_KEY"),
+  groqModel: () => env("GROQ_MODEL") ?? "llama-3.3-70b-versatile",
   geminiKey: () => env("GEMINI_API_KEY") ?? env("GOOGLE_API_KEY"),
   finnhubKey: () => env("FINNHUB_API_KEY"),
   dataProvider: () => (env("DATA_PROVIDER") === "mock" ? "mock" : "live") as "mock" | "live",
 };
 
-export type AiProvider = "anthropic" | "openrouter" | "gemini";
+export type AiProvider = "anthropic" | "groq" | "gemini" | "openrouter";
 
-/** Claude if an Anthropic key is set, then OpenRouter, then Gemini, otherwise null (chat disabled). */
+/**
+ * Every AI service with a key set, fastest first. The chat uses the first and moves down the list
+ * when one is busy, out of quota or failing. Empty means the chat is disabled.
+ */
+export function aiProviders(): AiProvider[] {
+  const all: [AiProvider, string | undefined][] = [
+    ["anthropic", config.anthropicKey()],
+    ["groq", config.groqKey()],
+    ["gemini", config.geminiKey()],
+    ["openrouter", config.openrouterKey()],
+  ];
+  return all.filter(([, key]) => key).map(([p]) => p);
+}
+
 export function aiProvider(): AiProvider | null {
-  if (config.anthropicKey()) return "anthropic";
-  if (config.openrouterKey()) return "openrouter";
-  if (config.geminiKey()) return "gemini";
-  return null;
+  return aiProviders()[0] ?? null;
 }
 
 /** Cache lifetimes in seconds per data type. */
