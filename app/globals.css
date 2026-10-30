@@ -636,3 +636,29 @@ img, svg, video { max-width: 100%; }
   .seg button { padding: 6px 11px; font-size: 14.5px; }
   .seg { mask-image: linear-gradient(90deg, #000 85%, transparent); -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); }
 }
+
+/* tabs never squeeze their labels: they keep full width and the row scrolls sideways */
+.tabs { scrollbar-width: none; -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; }
+.tabs::-webkit-scrollbar { display: none; }
+.tabs button { flex: 0 0 auto; scroll-snap-align: start; }
+
+/* company header stacks on narrow screens: name and details first, then the price */
+@media (max-width: 760px) {
+  .co-head { grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
+  .co-name { font-size: 32px; }
+  .co-meta { line-height: 1.7; }
+  .co-meta .state { white-space: nowrap; display: inline-block; }
+  .co-price { text-align: left; }
+  .co-price .p { font-size: 40px; }
+  .co-price .c { font-size: 18px; }
+  .tabs { mask-image: linear-gradient(90deg, #000 88%, transparent); -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent); }
+  .tabs button { padding: 11px 13px 9px; font-size: 16px; }
+}
+
+/* a labelled segmented control stays inside its panel; its buttons scroll sideways when they do not fit */
+.seg-wrap { display: inline-flex; align-items: center; max-width: 100%; min-width: 0; }
+.seg-wrap .ctl-label { flex: 0 0 auto; }
+.seg-wrap .seg { min-width: 0; }
+@media (max-width: 760px) {
+  .seg-wrap { display: flex; width: 100%; }
+}

@@ -54,7 +54,7 @@ export function ResourceList({ items }: { items: { label: string; url: string; d
 
 export function Seg<T extends string>({ value, options, onChange, label }: { value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; label?: string }) {
   return (
-    <span>
+    <span className="seg-wrap">
       {label ? <span className="ctl-label">{label}</span> : null}
       <span className="seg" role="group" aria-label={label}>
         {options.map((o) => (
