@@ -43,6 +43,8 @@ export interface OpenAIService {
   call: Fetcher;
   /** Streams the answer as it is written; without it the whole reply arrives at once. */
   stream?: Streamer;
+  /** Lists the models the service offers right now, so retired model names are skipped automatically. */
+  discover?: () => Promise<string[]>;
 }
 
 function fetcher(url: string, key: () => string | undefined, extra: Record<string, string> = {}): Fetcher {
@@ -99,7 +101,14 @@ const uniq = (xs: string[]) => [...new Set(xs)];
 export const groq = (): OpenAIService => ({
   name: "groq",
   label: "Groq",
-  models: () => uniq([config.groqModel(), "llama-3.3-70b-versatile", "openai/gpt-oss-120b", "llama-3.1-8b-instant"]),
+  // Preferred order; whatever Groq no longer offers is skipped, and its other chat models fill in.
+  models: () => uniq([config.groqModel(), "openai/gpt-oss-120b", "llama-3.3-70b-versatile", "moonshotai/kimi-k2-instruct", "qwen/qwen3-32b", "openai/gpt-oss-20b", "llama-3.1-8b-instant"]),
+  discover: async () => {
+    const res = await fetch("https://api.groq.com/openai/v1/models", { headers: { Authorization: `Bearer ${config.groqKey()}` } });
+    if (!res.ok) throw new Error(`${res.status} model list unavailable`);
+    const json = (await res.json()) as { data?: { id: string; active?: boolean }[] };
+    return (json.data ?? []).filter((m) => m.active !== false).map((m) => m.id);
+  },
   call: fetcher("https://api.groq.com/openai/v1/chat/completions", config.groqKey),
   stream: streamer("https://api.groq.com/openai/v1/chat/completions", config.groqKey),
 });
@@ -162,8 +171,30 @@ async function webSearch(query: unknown, log: SourceLog): Promise<[string, boole
 /** Models that answered recently, per service, so a failing model is not re-tried on every step. */
 const working = new Map<string, string>();
 
+/** Models each service currently offers, refreshed every 30 minutes. */
+const offered = new Map<string, { at: number; ids: string[] }>();
+const NOT_CHAT = /whisper|tts|guard|compound|playai|orpheus|embed|vision-only|distil/i;
+
+async function refreshModels(svc: OpenAIService): Promise<void> {
+  if (!svc.discover) return;
+  const hit = offered.get(svc.name);
+  if (hit && Date.now() - hit.at < 30 * 60_000) return;
+  try {
+    const ids = await svc.discover();
+    if (ids.length) offered.set(svc.name, { at: Date.now(), ids });
+  } catch (err) {
+    console.error(`[ai] ${svc.label} model list: ${(err as Error)?.message ?? err}`);
+  }
+}
+
 function modelOrder(svc: OpenAIService): string[] {
-  const models = svc.models();
+  const preferred = svc.models();
+  const ids = offered.get(svc.name)?.ids;
+  // Keep the preferred models that still exist, then any other chat model the service offers.
+  const models = ids
+    ? [...preferred.filter((m) => ids.includes(m)), ...ids.filter((id) => !preferred.includes(id) && !NOT_CHAT.test(id))]
+    : preferred;
+  if (!models.length) return preferred;
   const last = working.get(svc.name);
   return last && models.includes(last) ? [last, ...models.filter((m) => m !== last)] : models;
 }
@@ -179,6 +210,7 @@ async function complete(svc: OpenAIService, body: Record<string, unknown>): Prom
       return res;
     } catch (err) {
       lastErr = err;
+      console.error(`[ai] ${svc.label} ${model}: ${(err as Error)?.message ?? err}`.slice(0, 400));
       if (badKey(err)) break; // a bad key fails every model
     }
   }
@@ -224,6 +256,7 @@ async function* modelTurn(svc: OpenAIService, body: Record<string, unknown>): As
       return;
     } catch (err) {
       lastErr = err;
+      console.error(`[ai] ${svc.label} ${model}: ${(err as Error)?.message ?? err}`.slice(0, 400));
       if (wrote || badKey(err)) throw err;
     }
   }
@@ -235,6 +268,7 @@ export async function* runOpenAI(svc: OpenAIService, history: Msg[], userText: s
   history.push({ role: "user", content: `[${contextNote}]\n\nUser question: ${userText}` });
   const log = new SourceLog();
   const tools = openaiTools(webAvailable());
+  await refreshModels(svc);
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
       let msg: { content: string; tool_calls: ToolCall[] } | null = null;
