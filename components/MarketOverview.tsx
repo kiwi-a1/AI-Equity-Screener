@@ -4,6 +4,7 @@ import { fmtNumber, fmtPct } from "@/lib/format";
 import type { History, Quote } from "@/lib/types";
 
 import { Sparkline } from "./charts";
+import { Updated } from "./live";
 import { CountText } from "./motion";
 import { changeClass, DataState, Kicker } from "./ui";
 import { useApi } from "./useApi";
@@ -17,7 +18,7 @@ export const INDICES: { symbol: string; name: string }[] = [
 ];
 
 export default function MarketOverview() {
-  const quotes = useApi<Quote[]>(`/api/quotes?symbols=${encodeURIComponent(INDICES.map((i) => i.symbol).join(","))}`, { refreshMs: 60_000 });
+  const quotes = useApi<Quote[]>(`/api/quotes?symbols=${encodeURIComponent(INDICES.map((i) => i.symbol).join(","))}`, { refreshMs: 15_000 });
   const spx = useApi<History>(`/api/history?symbol=${encodeURIComponent("^GSPC")}&range=1Y&interval=1d`);
   const by = new Map((quotes.data ?? []).map((q) => [q.symbol, q]));
   const bars = spx.data?.bars ?? [];
@@ -28,7 +29,7 @@ export default function MarketOverview() {
   return (
     <div className="cols cols-2-3">
       <section className="block plain">
-        <Kicker aside="refreshes every minute">Markets Today</Kicker>
+        <Kicker aside={<Updated at={quotes.fetchedAt} />}>Markets Today</Kicker>
         <DataState loading={quotes.loading} error={quotes.error} hasData={(quotes.data ?? []).length > 0} what="index quotes" onRetry={quotes.reload}>
           <ul className="ledger">
             {INDICES.map((i) => {

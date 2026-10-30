@@ -94,6 +94,7 @@ export function buildQuote(symbol: string, f: Record<string, number | string>, p
     preMarketChangePercent: scale(num(f, "preMarketChangePercent")),
     postMarketPrice: num(f, "postMarketPrice"),
     postMarketChangePercent: scale(num(f, "postMarketChangePercent")),
+    volume: num(f, "regularMarketVolume", "volume"),
   };
 }
 

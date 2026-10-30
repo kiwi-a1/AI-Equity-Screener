@@ -49,7 +49,7 @@ export function aiProvider(): AiProvider | null {
 
 /** Cache lifetimes in seconds per data type. */
 export const TTL = {
-  quote: 30,
+  quote: 5, // short, so prices tick live
   search: 3600,
   history: 15 * 60,
   news: 10 * 60,

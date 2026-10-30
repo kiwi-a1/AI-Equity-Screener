@@ -13,8 +13,13 @@ import ChatPanel, { type ChatHandle } from "./ChatPanel";
 import MarketNews from "./MarketNews";
 import MarketOverview from "./MarketOverview";
 import CompanyHeader from "./CompanyHeader";
+import MarketMovers from "./MarketMovers";
+import RecentChips from "./RecentChips";
 import SearchBox from "./SearchBox";
 import TickerTape from "./TickerTape";
+import Watchlist from "./Watchlist";
+import { MarketClockBadge } from "./live";
+import { useRecent } from "./saved";
 import Financials from "./sections/Financials";
 import HistoricalData from "./sections/HistoricalData";
 import Holders from "./sections/Holders";
@@ -94,6 +99,13 @@ export default function Workspace() {
     return () => ro.disconnect();
   }, [section, symbol, !!company.data]);
 
+  // Remember the companies this visitor opens, for the Recent chips.
+  const recent = useRecent();
+  useEffect(() => {
+    if (symbol && company.data) recent.add(symbol);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol, !!company.data]);
+
   const info = company.data;
   const Section = SECTION_COMPONENTS[section];
 
@@ -110,10 +122,12 @@ export default function Workspace() {
             </h1>
             <span className="masthead-right">
               <span className="dateline">{today()}</span>
+              <MarketClockBadge />
               <ThemeToggle />
             </span>
           </div>
           <SearchBox onSelect={selectSymbol} autoFocus={!symbol} />
+          <RecentChips current={symbol} onSelect={selectSymbol} />
           <TickerStrip current={symbol} onSelect={selectSymbol} />
         </div>
 
@@ -125,7 +139,9 @@ export default function Workspace() {
                 statements, ownership and news, with an AI analyst on the right that follows along as you read.
               </p>
             </div>
+            <Watchlist onSelect={selectSymbol} />
             <MarketOverview />
+            <MarketMovers onSelect={selectSymbol} />
             <MarketNews />
           </>
         ) : (
