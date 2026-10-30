@@ -77,6 +77,11 @@ async function webSearch(client: GeminiClientLike, query: unknown, log: SourceLo
   }
 }
 
+/** Google-Search-grounded research for the other runners, when a Gemini key is set. */
+export function geminiWebSearch(query: unknown, log: SourceLog): Promise<[string, boolean]> {
+  return webSearch(new GoogleGenAI({ apiKey: config.geminiKey() }) as unknown as GeminiClientLike, query, log);
+}
+
 export async function* runGemini(
   history: Content[],
   userText: string,
