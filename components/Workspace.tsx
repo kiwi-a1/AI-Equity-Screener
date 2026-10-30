@@ -132,7 +132,7 @@ export default function Workspace() {
         )}
         <footer className="footer">Market data may be delayed. Calculated figures are derived from reported values. Nothing on this site is investment advice.</footer>
       </main>
-      <ChatPanel ref={chatRef} symbol={symbol} info={info} context={symbol ? context ?? { section, filters: {}, visible: {} } : null} />
+      <ChatPanel ref={chatRef} symbol={symbol} info={info} onOpenCompany={(s) => { setContext(null); navigate({ s }); }} context={symbol ? context ?? { section, filters: {}, visible: {} } : null} />
     </div>
   );
 }
