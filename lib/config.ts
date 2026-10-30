@@ -23,10 +23,11 @@ export const config = {
 export type AiProvider = "anthropic" | "groq" | "gemini" | "openrouter";
 
 /**
- * The AI services the chat may use. Only Groq is switched on; the others stay in the code and can be
- * turned back on by adding them here (in order of preference).
+ * The AI services the chat may use. Groq is preferred; the order of the others is decided at run time
+ * from how quickly each has been answering (see lib/ai/index.ts).
  */
-export const ACTIVE_PROVIDERS: AiProvider[] = ["groq"];
+export const ACTIVE_PROVIDERS: AiProvider[] = ["groq", "gemini", "openrouter"];
+export const PREFERRED_PROVIDER: AiProvider = "groq";
 
 /**
  * Every active AI service with a key set, fastest first. The chat uses the first and moves down the list

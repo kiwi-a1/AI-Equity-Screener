@@ -165,10 +165,10 @@ describe("Gemini runner (scripted client)", () => {
 
   it("explains quota errors and rolls back", async () => {
     const fake = { models: { generateContentStream: async () => { throw new Error("429 RESOURCE_EXHAUSTED"); }, generateContent: async () => ({}) } };
-    const history = [{ role: "user", parts: [] }];
+    const history = [{ role: "user", parts: [{ text: "earlier question" }] }];
     const events = await collect(runGemini(history as never, "q", "ctx", fake as never));
     expect((events.find((e) => e.type === "error") as { text: string }).text).toMatch(/usage limit/);
-    expect(history).toHaveLength(1);
+    expect(history).toEqual([{ role: "user", parts: [{ text: "earlier question" }] }]);
   });
 });
 
@@ -262,16 +262,51 @@ describe("streaming", () => {
 });
 
 describe("active providers", () => {
-  it("uses only Groq, even when other keys are set", async () => {
+  it("uses every service with a key, Groq first", async () => {
     process.env.GROQ_API_KEY = "x";
     process.env.GEMINI_API_KEY = "y";
     process.env.OPENROUTER_API_KEY = "z";
     const { aiProviders } = await import("@/lib/config");
-    expect(aiProviders()).toEqual(["groq"]);
+    expect(aiProviders()).toEqual(["groq", "gemini", "openrouter"]);
     delete process.env.GROQ_API_KEY;
-    expect(aiProviders()).toEqual([]);
+    expect(aiProviders()).toEqual(["gemini", "openrouter"]);
     delete process.env.GEMINI_API_KEY;
     delete process.env.OPENROUTER_API_KEY;
+  });
+});
+
+describe("speed ranking", () => {
+  it("keeps Groq first while healthy, orders backups by measured speed, benches failures", async () => {
+    const { runAnalyst, rankProviders, resetCooldowns } = await import("@/lib/ai");
+    resetCooldowns();
+    expect(rankProviders(["groq", "gemini", "openrouter"])).toEqual(["groq", "gemini", "openrouter"]);
+    const done = { web: [], queries: [], data: [] };
+    const ctx = { symbol: null, company: null, section: null, filters: {}, visible: {} };
+    const runners = {
+      anthropic: async function* () {},
+      groq: async function* () {
+        yield { type: "error" as const, text: "busy" };
+        yield { type: "done" as const, sources: done, history: [], provider: "groq" };
+      },
+      gemini: async function* () {
+        await new Promise((r) => setTimeout(r, 120));
+        yield { type: "text" as const, text: "slow" };
+        yield { type: "done" as const, sources: done, history: [], provider: "gemini" };
+      },
+      openrouter: async function* () {
+        yield { type: "text" as const, text: "fast" };
+        yield { type: "done" as const, sources: done, history: [], provider: "openrouter" };
+      },
+    };
+    const log = console.log;
+    console.log = () => {};
+    // Gemini answers (slowly); then OpenRouter is measured as faster on a later turn.
+    for await (const _ of runAnalyst({ message: "hi", history: [], provider: null, context: ctx }, runners, ["groq", "gemini", "openrouter"])) void _;
+    for await (const _ of runAnalyst({ message: "hi", history: [], provider: null, context: ctx }, runners, ["openrouter"])) void _;
+    console.log = log;
+    // Groq failed, so it is benched and goes last; OpenRouter is now faster than Gemini.
+    expect(rankProviders(["groq", "gemini", "openrouter"])).toEqual(["openrouter", "gemini", "groq"]);
+    resetCooldowns();
   });
 });
 
@@ -387,5 +422,24 @@ describe("model discovery", () => {
     console.error = log;
     expect(tried).toEqual(["old-b", "new-chat-model"]);
     expect(events.some((e) => e.type === "text")).toBe(true);
+  });
+});
+
+describe("small follow-up requests", () => {
+  it("drops earlier tool data and keeps recent questions and answers", async () => {
+    const { compactHistory, retryAfterSeconds } = await import("@/lib/ai/openai");
+    const h = [
+      { role: "user", content: "[context]\n\nUser question: How is AAPL?" },
+      { role: "assistant", content: "", tool_calls: [{ id: "1" }] },
+      { role: "tool", tool_call_id: "1", content: "x".repeat(20000) },
+      { role: "assistant", content: "Apple is fine." },
+    ];
+    expect(compactHistory(h)).toEqual([
+      { role: "user", content: "How is AAPL?" },
+      { role: "assistant", content: "Apple is fine." },
+    ]);
+    expect(retryAfterSeconds(new Error("429 Rate limit reached. Please try again in 2.5s."))).toBe(2.5);
+    expect(retryAfterSeconds(new Error("Please try again in 1m30s"))).toBe(90);
+    expect(retryAfterSeconds(new Error("Please try again in 450ms"))).toBe(0.45);
   });
 });

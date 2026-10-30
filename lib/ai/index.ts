@@ -3,7 +3,7 @@
  * fails before writing any answer, the turn moves on to the next one, so a busy or out-of-quota
  * service never leaves the user with an error while another could answer.
  */
-import { aiProviders, type AiProvider } from "../config";
+import { aiProviders, PREFERRED_PROVIDER, type AiProvider } from "../config";
 import { runClaude } from "./anthropic";
 import { buildContextNote } from "./context";
 import type { ChatEvent, ChatRequest } from "./events";
@@ -24,11 +24,36 @@ const RUNNERS: Record<AiProvider, Runner> = {
   openrouter: (h, m, n) => runOpenAI(openrouter(), h as Record<string, unknown>[], m, n),
 };
 
-/** Services that failed recently are tried last for a while, so one slow failure is not paid on every question. */
+/**
+ * Live ranking of services. Each answer records how long the service took to start writing (a moving
+ * average), and a failure benches the service for a while. The preferred service goes first while it is
+ * healthy; the rest are ordered by measured speed, and benched services go last.
+ */
 const COOLDOWN_MS = 90_000;
 const coolingUntil = new Map<AiProvider, number>();
+const speedMs = new Map<AiProvider, number>();
+/** Starting guesses until real timings exist. */
+const PRIOR_MS: Record<AiProvider, number> = { groq: 1500, gemini: 3000, openrouter: 4000, anthropic: 3500 };
+
 export function resetCooldowns() {
   coolingUntil.clear();
+  speedMs.clear();
+}
+
+function recordSpeed(p: AiProvider, ms: number) {
+  const prev = speedMs.get(p);
+  speedMs.set(p, prev === undefined ? ms : prev * 0.7 + ms * 0.3);
+}
+
+export function rankProviders(providers: AiProvider[], now = Date.now()): AiProvider[] {
+  const healthy = (p: AiProvider) => (coolingUntil.get(p) ?? 0) <= now;
+  const speed = (p: AiProvider) => speedMs.get(p) ?? PRIOR_MS[p];
+  const bySpeed = (a: AiProvider, b: AiProvider) => speed(a) - speed(b);
+  const up = providers.filter(healthy);
+  const preferred = up.filter((p) => p === PREFERRED_PROVIDER);
+  const rest = up.filter((p) => p !== PREFERRED_PROVIDER).sort(bySpeed);
+  const benched = providers.filter((p) => !healthy(p)).sort((a, b) => (coolingUntil.get(a) ?? 0) - (coolingUntil.get(b) ?? 0));
+  return [...preferred, ...rest, ...benched];
 }
 
 /**
@@ -41,7 +66,7 @@ async function preload(symbol: string | null): Promise<string> {
   const timeout = new Promise<null>((r) => setTimeout(() => r(null), 2500));
   const res = await Promise.race([executeTool("get_company_snapshot", { symbol }).catch(() => null), timeout]);
   if (!res || res[1]) return "";
-  return `\n\nPreloaded get_company_snapshot result for ${symbol} (retrieved just now; use it directly instead of calling that tool again):\n${res[0].slice(0, 5000)}`;
+  return `\n\nPreloaded get_company_snapshot result for ${symbol} (retrieved just now; use it directly instead of calling that tool again):\n${res[0].slice(0, 2500)}`;
 }
 
 export async function* runAnalyst(req: ChatRequest, runners: Record<AiProvider, Runner> = RUNNERS, providers: AiProvider[] = aiProviders()): AsyncGenerator<ChatEvent> {
@@ -54,17 +79,20 @@ export async function* runAnalyst(req: ChatRequest, runners: Record<AiProvider, 
   const note = buildContextNote(req.context) + (await preload(req.context?.symbol ?? null));
   const prevFamily = req.provider ? FAMILY[req.provider as AiProvider] : null;
 
-  const now = Date.now();
-  const order = [...providers.filter((p) => (coolingUntil.get(p) ?? 0) <= now), ...providers.filter((p) => (coolingUntil.get(p) ?? 0) > now)];
+  const order = rankProviders(providers);
   const reasons: string[] = [];
   for (const provider of order) {
     // Histories are format-specific; start fresh when switching to a different family.
     const history = prevFamily === FAMILY[provider] && Array.isArray(req.history) ? [...req.history] : [];
     const held: ChatEvent[] = [];
+    const t0 = Date.now();
     let wrote = false;
     let failed = false;
     for await (const ev of runners[provider](history, req.message, note)) {
-      if (ev.type === "text") wrote = true;
+      if (ev.type === "text" && !wrote) {
+        wrote = true;
+        recordSpeed(provider, Date.now() - t0);
+      }
       if (!wrote && ev.type === "error") {
         failed = true; // swallow and try the next service
         reasons.push(`${LABELS[provider]}: ${ev.text}`);
@@ -80,7 +108,7 @@ export async function* runAnalyst(req: ChatRequest, runners: Record<AiProvider, 
     }
     if (!failed) {
       coolingUntil.delete(provider);
-      console.log(`[ai] answered by ${LABELS[provider]} in ${Date.now() - started} ms`);
+      console.log(`[ai] answered by ${LABELS[provider]} in ${Date.now() - started} ms (order: ${order.map((p) => LABELS[p]).join(" > ")})`);
       return;
     }
     coolingUntil.set(provider, Date.now() + COOLDOWN_MS);
