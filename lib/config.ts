@@ -8,19 +8,22 @@ const env = (name: string): string | undefined => {
 export const config = {
   analystModel: () => env("ANALYST_MODEL") ?? "claude-opus-5-5",
   analystEffort: () => (env("ANALYST_EFFORT") ?? "medium") as "low" | "medium" | "high" | "xhigh" | "max",
-  geminiModel: () => env("GEMINI_MODEL") ?? "gemini-flash-latest",
+  geminiModel: () => env("GEMINI_MODEL") ?? "gemini-flash-lite-latest",
   benchmark: () => env("BENCHMARK_SYMBOL") ?? "^GSPC",
   anthropicKey: () => env("ANTHROPIC_API_KEY"),
+  openrouterKey: () => env("OPENROUTER_API_KEY"),
+  openrouterModel: () => env("OPENROUTER_MODEL") ?? "openai/gpt-4o-mini",
   geminiKey: () => env("GEMINI_API_KEY") ?? env("GOOGLE_API_KEY"),
   finnhubKey: () => env("FINNHUB_API_KEY"),
   dataProvider: () => (env("DATA_PROVIDER") === "mock" ? "mock" : "live") as "mock" | "live",
 };
 
-export type AiProvider = "anthropic" | "gemini";
+export type AiProvider = "anthropic" | "openrouter" | "gemini";
 
-/** Claude if an Anthropic key is set, otherwise Gemini, otherwise null (chat disabled). */
+/** Claude if an Anthropic key is set, then OpenRouter, then Gemini, otherwise null (chat disabled). */
 export function aiProvider(): AiProvider | null {
   if (config.anthropicKey()) return "anthropic";
+  if (config.openrouterKey()) return "openrouter";
   if (config.geminiKey()) return "gemini";
   return null;
 }
