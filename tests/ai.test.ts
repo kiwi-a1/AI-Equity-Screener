@@ -199,3 +199,27 @@ describe("Gemini busy handling", () => {
     expect(describeGeminiError(new Error("API key not valid"))).toMatch(/GEMINI_API_KEY/);
   });
 });
+
+describe("openrouter runner", () => {
+  it("runs a tool call then answers", async () => {
+    const { runOpenRouter } = await import("@/lib/ai/openrouter");
+    let n = 0;
+    const fake = async () =>
+      n++ === 0
+        ? { choices: [{ message: { content: "", tool_calls: [{ id: "c1", type: "function" as const, function: { name: "get_company_snapshot", arguments: '{"symbol":"AAPL"}' } }] } }] }
+        : { choices: [{ message: { content: "Apple looks fine." } }] };
+    const events = [];
+    for await (const e of runOpenRouter([], "How is AAPL?", "ctx", fake)) events.push(e);
+    expect(events.some((e) => e.type === "step")).toBe(true);
+    expect(events.filter((e) => e.type === "text").map((e) => (e as { text: string }).text).join("")).toContain("Apple");
+    expect(events.at(-1)?.type).toBe("done");
+  });
+  it("rolls back and explains errors", async () => {
+    const { runOpenRouter } = await import("@/lib/ai/openrouter");
+    const h: Record<string, unknown>[] = [];
+    const events = [];
+    for await (const e of runOpenRouter(h, "hi", "ctx", async () => { throw new Error("401 bad key"); })) events.push(e);
+    expect(h.length).toBe(0);
+    expect(events.some((e) => e.type === "error" && /OPENROUTER_API_KEY/.test(e.text))).toBe(true);
+  });
+});
