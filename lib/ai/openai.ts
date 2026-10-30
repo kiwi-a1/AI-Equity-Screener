@@ -54,7 +54,7 @@ export const groq = (): OpenAIService => ({
 export const openrouter = (): OpenAIService => ({
   name: "openrouter",
   label: "OpenRouter",
-  models: () => uniq([config.openrouterModel(), "google/gemini-2.5-flash", "meta-llama/llama-3.3-70b-instruct"]),
+  models: () => uniq([config.openrouterModel(), "google/gemini-2.5-flash", "meta-llama/llama-3.3-70b-instruct:free", "openai/gpt-oss-20b:free", "google/gemini-2.0-flash-exp:free"]),
   call: fetcher("https://openrouter.ai/api/v1/chat/completions", config.openrouterKey, { "X-Title": "Equity Screener" }),
 });
 

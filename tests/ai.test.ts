@@ -264,4 +264,25 @@ describe("provider failover", () => {
     expect(events.some((e) => e.type === "text")).toBe(true);
     expect((events.at(-1) as { provider: string }).provider).toBe("gemini");
   });
+  it("hides service names when every service fails", async () => {
+    process.env.GROQ_API_KEY = "x";
+    process.env.GEMINI_API_KEY = "y";
+    const { runAnalyst } = await import("@/lib/ai");
+    const done = { web: [], queries: [], data: [] };
+    const fail = (p: string) => async function* () {
+      yield { type: "error" as const, text: `The ${p} API key is missing or invalid.` };
+      yield { type: "done" as const, sources: done, history: [], provider: p };
+    };
+    const runners = { anthropic: fail("Claude"), groq: fail("Groq"), gemini: fail("Gemini"), openrouter: fail("OpenRouter") };
+    const events = [];
+    const log = console.error;
+    console.error = () => {};
+    for await (const e of runAnalyst({ message: "hi", history: [], provider: null, context: { symbol: null, company: null, section: null, filters: {}, visible: {} } }, runners)) events.push(e);
+    console.error = log;
+    delete process.env.GROQ_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+    const text = JSON.stringify(events.filter((e) => e.type !== "done"));
+    expect(text).toMatch(/AI assistant is unavailable/);
+    expect(text).not.toMatch(/groq|gemini|openrouter|claude/i);
+  });
 });

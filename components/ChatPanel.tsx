@@ -236,7 +236,7 @@ const ChatPanel = forwardRef<ChatHandle, Props>(function ChatPanel({ symbol, inf
       <div className="chat-body" ref={bodyRef}>
         {configured === false ? (
           <div className="notice warn">
-            The analyst is not configured yet. Add <strong>GEMINI_API_KEY</strong> or <strong>ANTHROPIC_API_KEY</strong> to the site&apos;s environment variables and redeploy.
+            The AI assistant is not available yet. Please check back soon.
           </div>
         ) : null}
         {!messages.length ? (
