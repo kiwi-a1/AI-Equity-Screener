@@ -261,6 +261,20 @@ describe("streaming", () => {
   });
 });
 
+describe("active providers", () => {
+  it("uses only Groq, even when other keys are set", async () => {
+    process.env.GROQ_API_KEY = "x";
+    process.env.GEMINI_API_KEY = "y";
+    process.env.OPENROUTER_API_KEY = "z";
+    const { aiProviders } = await import("@/lib/config");
+    expect(aiProviders()).toEqual(["groq"]);
+    delete process.env.GROQ_API_KEY;
+    expect(aiProviders()).toEqual([]);
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+  });
+});
+
 describe("provider failover", () => {
   it("moves to the next service when the first fails before answering", async () => {
     process.env.GROQ_API_KEY = "x";
@@ -281,7 +295,7 @@ describe("provider failover", () => {
       openrouter: async function* () {},
     };
     const events = [];
-    for await (const e of runAnalyst({ message: "hi", history: [], provider: null, context: { symbol: null, company: null, section: null, filters: {}, visible: {} } }, runners)) events.push(e);
+    for await (const e of runAnalyst({ message: "hi", history: [], provider: null, context: { symbol: null, company: null, section: null, filters: {}, visible: {} } }, runners, ["groq", "gemini"])) events.push(e);
     delete process.env.GROQ_API_KEY;
     delete process.env.GEMINI_API_KEY;
     expect(events.some((e) => e.type === "error")).toBe(false);
@@ -301,7 +315,7 @@ describe("provider failover", () => {
     const events = [];
     const log = console.error;
     console.error = () => {};
-    for await (const e of runAnalyst({ message: "hi", history: [], provider: null, context: { symbol: null, company: null, section: null, filters: {}, visible: {} } }, runners)) events.push(e);
+    for await (const e of runAnalyst({ message: "hi", history: [], provider: null, context: { symbol: null, company: null, section: null, filters: {}, visible: {} } }, runners, ["groq", "gemini"])) events.push(e);
     console.error = log;
     delete process.env.GROQ_API_KEY;
     delete process.env.GEMINI_API_KEY;
@@ -321,5 +335,34 @@ describe("follow-up questions", () => {
     });
     expect(splitFollowUps("Apple grew.\n\n[[follow").body).toBe("Apple grew.");
     expect(splitFollowUps("No marker here").followUps).toEqual([]);
+  });
+});
+
+describe("Groq web search", () => {
+  it("runs through Groq Compound and records its sources", async () => {
+    process.env.GROQ_API_KEY = "x";
+    const { runOpenAI } = await import("@/lib/ai/openai");
+    const realFetch = globalThis.fetch;
+    const models: string[] = [];
+    globalThis.fetch = (async (_url: string, init: { body: string }) => {
+      const body = JSON.parse(init.body);
+      models.push(body.model);
+      return new Response(JSON.stringify({ choices: [{ message: { content: "Apple reported record revenue (Reuters, Oct 30).", executed_tools: [{ search_results: { results: [{ url: "https://reuters.com/a", title: "Apple results" }] } }] } }] }));
+    }) as unknown as typeof fetch;
+    let n = 0;
+    const svc = {
+      name: "groq" as const, label: "Groq", models: () => ["m1"],
+      call: async () =>
+        n++ === 0
+          ? { choices: [{ message: { content: "", tool_calls: [{ id: "w1", type: "function" as const, function: { name: "web_search", arguments: '{"query":"Apple earnings"}' } }] } }] }
+          : { choices: [{ message: { content: "Done." } }] },
+    };
+    const events = [];
+    for await (const e of runOpenAI(svc, [], "news?", "ctx")) events.push(e);
+    globalThis.fetch = realFetch;
+    delete process.env.GROQ_API_KEY;
+    expect(models[0]).toBe("groq/compound-mini");
+    const done = events.at(-1) as { sources: { web: { url: string }[] } };
+    expect(done.sources.web.map((w) => w.url)).toContain("https://reuters.com/a");
   });
 });
