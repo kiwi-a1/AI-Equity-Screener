@@ -194,7 +194,8 @@ const ChatPanel = forwardRef<ChatHandle, Props>(function ChatPanel({ symbol, inf
           }
         }
       } catch (err) {
-        if ((err as Error).name !== "AbortError") update((m) => ({ ...m, error: "The AI assistant could not respond. Please try again." }));
+        if ((err as Error).name === "AbortError") update((m) => ({ ...m, stopped: true }));
+        else update((m) => ({ ...m, error: "The AI assistant could not respond. Please try again." }));
       } finally {
         setBusyId(null);
         setStatus("");
@@ -356,6 +357,7 @@ const ChatPanel = forwardRef<ChatHandle, Props>(function ChatPanel({ symbol, inf
                 {m.role === "assistant" && !text && busyHere && isLast ? <Thinking text={status || "Thinking"} /> : null}
                 {m.role === "assistant" && text && busyHere && isLast && status ? <Thinking text={status} /> : null}
               </div>
+              {m.stopped ? <div className="muted small" style={{ fontStyle: "italic", marginTop: 4 }}>Stopped</div> : null}
               {m.error ? <div className="err small">{m.error}</div> : null}
               {m.role === "assistant" && !(busyHere && isLast) ? <Evidence sources={m.sources} steps={m.steps} /> : null}
             </div>
@@ -395,9 +397,15 @@ const ChatPanel = forwardRef<ChatHandle, Props>(function ChatPanel({ symbol, inf
         />
         <div className="row">
           <span className="hint">AI analysis can be wrong. Not investment advice.</span>
-          <button className="btn" type="submit" disabled={busy || !input.trim() || configured === false}>
-            {busy ? "Working" : "Ask"}
-          </button>
+          {busy ? (
+            <button className="btn stop" type="button" onClick={() => abortRef.current?.abort()} aria-label="Stop the answer">
+              <span className="sq" aria-hidden /> Stop
+            </button>
+          ) : (
+            <button className="btn" type="submit" disabled={!input.trim() || configured === false}>
+              Ask
+            </button>
+          )}
         </div>
       </form>
     </aside>

@@ -704,3 +704,7 @@ img, svg, video { max-width: 100%; }
   .chat-col .chat-head .ctx { font-size: 13px; }
   .chat-col .chat-body { padding: 12px 16px; }
 }
+
+/* stop button while the analyst is answering */
+.btn.stop { display: inline-flex; align-items: center; gap: 8px; background: var(--tint-2); border: 1px solid var(--accent); color: var(--ink); box-shadow: 0 0 16px rgba(229, 103, 122, 0.25); }
+.btn.stop .sq { width: 10px; height: 10px; border-radius: 2px; background: var(--accent); }

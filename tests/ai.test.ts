@@ -238,11 +238,35 @@ describe("openai-compatible runner", () => {
   });
 });
 
+describe("streaming", () => {
+  it("streams text and assembles tool calls sent in pieces", async () => {
+    const { runOpenAI } = await import("@/lib/ai/openai");
+    let n = 0;
+    const svc = {
+      name: "groq" as const, label: "Groq", models: () => ["m1"], call: async () => ({}),
+      stream: async function* () {
+        if (n++ === 0) {
+          yield { tool_calls: [{ index: 0, id: "c1", function: { name: "get_company_snapshot", arguments: '{"sym' } }] };
+          yield { tool_calls: [{ index: 0, function: { arguments: 'bol":"AAPL"}' } }] };
+        } else {
+          yield { content: "Apple " };
+          yield { content: "is fine." };
+        }
+      },
+    };
+    const events = [];
+    for await (const e of runOpenAI(svc, [], "How is AAPL?", "ctx")) events.push(e);
+    expect(events.filter((e) => e.type === "text").length).toBe(2);
+    expect(events.some((e) => e.type === "step" && /AAPL/.test(e.text))).toBe(true);
+  });
+});
+
 describe("provider failover", () => {
   it("moves to the next service when the first fails before answering", async () => {
     process.env.GROQ_API_KEY = "x";
     process.env.GEMINI_API_KEY = "y";
-    const { runAnalyst } = await import("@/lib/ai");
+    const { runAnalyst, resetCooldowns } = await import("@/lib/ai");
+    resetCooldowns();
     const done = { web: [], queries: [], data: [] };
     const runners = {
       anthropic: async function* () {},
