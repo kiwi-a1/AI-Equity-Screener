@@ -366,3 +366,26 @@ describe("Groq web search", () => {
     expect(done.sources.web.map((w) => w.url)).toContain("https://reuters.com/a");
   });
 });
+
+describe("model discovery", () => {
+  it("skips retired models and uses ones the service still offers", async () => {
+    const { runOpenAI } = await import("@/lib/ai/openai");
+    const tried: string[] = [];
+    const svc = {
+      name: "openrouter" as const, label: "Test", models: () => ["old-a", "old-b"],
+      discover: async () => ["new-chat-model", "whisper-large", "old-b"],
+      call: async (b: Record<string, unknown>) => {
+        tried.push(b.model as string);
+        if (b.model !== "new-chat-model") throw new Error("404 model not found");
+        return { choices: [{ message: { content: "ok" } }] };
+      },
+    };
+    const log = console.error;
+    console.error = () => {};
+    const events = [];
+    for await (const e of runOpenAI(svc, [], "hi", "ctx")) events.push(e);
+    console.error = log;
+    expect(tried).toEqual(["old-b", "new-chat-model"]);
+    expect(events.some((e) => e.type === "text")).toBe(true);
+  });
+});
